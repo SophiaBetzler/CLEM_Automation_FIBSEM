@@ -8,6 +8,7 @@ from pathlib import Path
 import os
 from datetime import datetime
 import numpy as np
+import ast
 import time
 
 def error_message(text):
@@ -20,7 +21,7 @@ class Fibsemcontrol():
     Class calls functions from openFIBSEM to control the microscope.
 
     """
-    def __init__(self):
+    def __init__(self, folder_path):
         """
         Establish connection to the microscope.
         Possible inputs for manufacturer:
@@ -32,6 +33,7 @@ class Fibsemcontrol():
         config_path: Directory to the microscope configuration file to be used.
         """
         self.project_root = Path(__file__).resolve().parent.parent
+        self.folder_path = folder_path
         try:
             #for hydra microscope use:
             config_path = os.path.join(self.project_root, 'config', 'czii-tfs-hydra-configuration.yaml')
@@ -48,6 +50,30 @@ class Fibsemcontrol():
             error_message(f"Connection to microscope failed: {e}")
             sys.exit()
 
+    def read_from_dict(self, filename):
+        """
+        The user should create txt files for his experiment conditions which are then converted to dicts and used
+        to set the milling/imaging conditions.
+        """
+        dictionary = {}
+        with open(os.path.join(self.folder_path + '/' + filename), 'r') as file:
+            for line in file:
+                if ":" in line:  # Ensure it's a key-value pair
+                    key, value = line.strip().split(":", 1)  # Split on first ":"
+                    dictionary[key.strip()] = value.strip()
+        keys_to_convert_float = ['milling_current', 'milling_voltage', 'dwell_time', 'hfw']
+        keys_to_convert_bool = ['autocontrast', 'autogamma', 'save']
+        for key in keys_to_convert_float:
+            if key in dictionary:
+                dictionary[key] = float(dictionary[key])
+        for key in keys_to_convert_bool:
+            if key in dictionary:
+                dictionary[key] = bool(dictionary[key])
+        if 'resolution' in dictionary:
+            dictionary['resolution'] = ast.literal_eval(dictionary['resolution'])
+        #     resolution_float = [float(i) for i in resolution_list]
+        return dictionary
+
     def acquire_image(self, key):
         '''
         This function connects to the buttons in the GUI. It allows to take electron beam, ion beam and electron and ion
@@ -63,27 +89,29 @@ class Fibsemcontrol():
                 'both': None,
                 #'fl': BeamType.FL
                         }
-        current_date = datetime.now().strftime("%Y%m%d")
-        desktop_path = Path.home() / "Desktop/"
-        folder_path = os.path.join(desktop_path, 'TestImages/', current_date)
-        acquisition_time = datetime.now().strftime("%H-%M")
-        if not os.path.exists(folder_path):
-            os.makedirs(folder_path)
-        else:
-            print('Directory already exists')
-        self.settings.image.path = folder_path
+        self.settings.image.path = self.folder_path
         plt.ion()  # needed to avoid the QCoreApplication::exec: The event loop is already running error
-        imaging_settings = structures.ImageSettings(
-            autocontrast=True,
-            autogamma=False,
-            resolution=[1536, 1024],
-            dwell_time=3e-6,
-            filename=acquisition_time,
-            beam_type=dict_beamtypes[key],
-            save=True,
-            hfw=150.0e-6,
-            path=folder_path,
-        )
+        imaging_settings = structures.ImageSettings.from_dict(self.read_from_dict('imaging.txt'))
+        fixed_parameters = {
+            'filename': acquisition_time,
+            'beam_type': dict_beamtypes[key],
+            'path': self.folder_path,
+        }
+        imaging_settings.filename = acquisition_time
+        imaging_settings.beam_type = dict_beamtypes[key]
+        imaging_settings.path = self.folder_path
+        #print(f"The second instance of imaging settings is {imaging_settings}.")
+        # imaging_settings = structures.ImageSettings(
+        #     autocontrast=True,
+        #     autogamma=False,
+        #     resolution=[1536, 1024],
+        #     dwell_time=3e-6,
+        #     filename=acquisition_time,
+        #     beam_type=dict_beamtypes[key],
+        #     save=True,
+        #     hfw=150.0e-6,
+        #     path=self.folder_path,
+        # )
         ion_imaging_settings = milling.FibsemMillingSettings(
             milling_voltage=3000,
             milling_current=60e-12,
@@ -266,8 +294,18 @@ class Gui(QWidget):
         fibsem.move_stage(values, 'absolute')
 
 if __name__ == "__main__":
+    #create a folder for the experiment
+    current_date = datetime.now().strftime("%Y%m%d")
+    desktop_path = Path.home() / "Desktop/"
+    folder_path = os.path.join(desktop_path, 'TestImages/', current_date)
+    acquisition_time = datetime.now().strftime("%H-%M")
+    if not os.path.exists(folder_path):
+        os.makedirs(folder_path)
+    else:
+        print('Directory already exists')
+
     app = QApplication(sys.argv)
-    fibsem = Fibsemcontrol()
+    fibsem = Fibsemcontrol(folder_path)
     gui = Gui(fibsem)
     gui.show()
     sys.exit(app.exec())

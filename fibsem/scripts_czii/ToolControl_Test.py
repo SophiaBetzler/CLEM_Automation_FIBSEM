@@ -10,6 +10,7 @@ from datetime import datetime
 import numpy as np
 import ast
 import time
+import re
 
 def error_message(text):
     messagebox.showerror("Error", text)
@@ -61,14 +62,16 @@ class Fibsemcontrol():
                 if ":" in line:  # Ensure it's a key-value pair
                     key, value = line.strip().split(":", 1)  # Split on first ":"
                     dictionary[key.strip()] = value.strip()
-        keys_to_convert_float = ['milling_current', 'milling_voltage', 'dwell_time', 'hfw']
-        keys_to_convert_bool = ['autocontrast', 'autogamma', 'save']
-        for key in keys_to_convert_float:
-            if key in dictionary:
-                dictionary[key] = float(dictionary[key])
+        keys_to_convert_float = ['milling_current', 'milling_voltage', 'dwell_time', 'hfw', 'voltage', 'working_distance', 'shift', 'beam_current', 'scan_rotation']
+        keys_to_convert_bool = ['autocontrast', 'autogamma', 'save', 'drift_correction', 'frame_integration', 'line_integration', 'stigmation', 'shift', 'reduced_area']
+        str_to_bool = {"true": True, "false": False, "none": None}
         for key in keys_to_convert_bool:
             if key in dictionary:
-                dictionary[key] = bool(dictionary[key])
+                dictionary[key] = str_to_bool.get(dictionary[key].lower(), None)
+        for key in keys_to_convert_float:
+            if key in dictionary:
+                if dictionary[key] is not None:
+                    dictionary[key] = float(dictionary[key])
         if 'resolution' in dictionary:
             dictionary['resolution'] = ast.literal_eval(dictionary['resolution'])
         #     resolution_float = [float(i) for i in resolution_list]
@@ -91,51 +94,35 @@ class Fibsemcontrol():
                         }
         self.settings.image.path = self.folder_path
         plt.ion()  # needed to avoid the QCoreApplication::exec: The event loop is already running error
-        imaging_settings = structures.ImageSettings.from_dict(self.read_from_dict('imaging.txt'))
         fixed_parameters = {
             'filename': acquisition_time,
             'beam_type': dict_beamtypes[key],
             'path': self.folder_path,
         }
-        imaging_settings.filename = acquisition_time
-        imaging_settings.beam_type = dict_beamtypes[key]
-        imaging_settings.path = self.folder_path
-        #print(f"The second instance of imaging settings is {imaging_settings}.")
-        # imaging_settings = structures.ImageSettings(
-        #     autocontrast=True,
-        #     autogamma=False,
-        #     resolution=[1536, 1024],
-        #     dwell_time=3e-6,
-        #     filename=acquisition_time,
-        #     beam_type=dict_beamtypes[key],
-        #     save=True,
-        #     hfw=150.0e-6,
-        #     path=self.folder_path,
-        # )
         ion_imaging_settings = milling.FibsemMillingSettings(
             milling_voltage=3000,
             milling_current=60e-12,
         )
-        if key == 'electron':
+        if key == 'electron' or key == 'ion':
             try:
+                filename_imaging = rf"imaging_{key}.txt"
+                imaging_settings = structures.ImageSettings.from_dict(self.read_from_dict(filename_imaging))
+                structures.BeamSettings(fixed_parameters['beam_type']).from_dict(self.read_from_dict(filename_imaging))
+                structures.BeamSystemSettings(beam_type=fixed_parameters['beam_type'],
+                                              beam=getattr(self.settings.system, key).beam,
+                                              detector=getattr(self.settings.system, key).detector,
+                                              eucentric_height=getattr(self.settings.system, key).eucentric_height,
+                                              column_tilt=getattr(self.settings.system, key).column_tilt,
+                                              enabled=getattr(self.settings.system, key).enabled
+                                              )
+                structures.BeamSystemSettings.plasma = self.read_from_dict(filename_imaging)['plasma']
+                structures.BeamSystemSettings.plasma_gas = self.read_from_dict(filename_imaging)['plasma_source']
+                for key1, value in fixed_parameters.items():
+                    setattr(imaging_settings, key1, value)
                 image = acquire.new_image(self.microscope, imaging_settings)
                 plt.imshow(image.data, cmap='gray')
             except Exception as e:
                 print(f"Image acquisition failed: {e}")
-        elif key == 'ion':
-            try:
-                ion_imaging_settings = milling.FibsemMillingSettings(
-                    milling_current = 60e-12,
-                    milling_voltage = 30000,
-                )
-                #milling.set("current", ion_imaging_settings.milling_current, ion_imaging_settings.milling_channel)
-                #milling.set("voltage", ion_imaging_settings.milling_voltage, ion_imaging_settings.milling_channel)
-                #time.sleep(15)
-                #print("Imaging current set.")
-                image = acquire.new_image(self.microscope, imaging_settings)
-                plt.imshow(image.data, cmap='gray')
-            except Exception as e:
-                print(f"Image acquisition failed {e}.")
         elif key == 'both':
             try:
                 image_eb, image_ion = acquire.take_reference_images(self.microscope, self.settings.image)
@@ -172,21 +159,22 @@ class Fibsemcontrol():
 
     def create_fiducials(self, centerX=0, centerY=0):
         rectangle_pattern_1 = structures.FibsemRectangleSettings(
-            rotation=30,
+            rotation=+45,
             width=10.0e-6,
             height=50.0e-6,
             centre_x=centerX,
             centre_y=centerY,
             depth=3e-6,
+            cleaning_cross_section=False
         )
 
         rectangle_pattern_2 = structures.FibsemRectangleSettings(
-            rotation=-30,
+            rotation=-45,
             width=10.0e-6,
             height=100.0e-6,
             centre_x=centerX,
             centre_y=centerY,
-            cleaning_cross_section=True,
+            cleaning_cross_section=False,
             depth=3e-6,
         )
 
@@ -201,16 +189,14 @@ class Fibsemcontrol():
         )
         self.acquire_image('ion')
         milling.draw_patterns(self.microscope, [rectangle_pattern_1, rectangle_pattern_2])
-        #milling.FibsemMillingSettings.set("current", ion_milling_settings.milling_current, ion_milling_settings.milling_channel)
-        #milling.FibsemMillingSettings.set("voltage", ion_milling_settings.milling_voltage, ion_milling_settings.milling_channel)
         print(f"The milling current and milling voltage are set.")
-        print(f"The estimated milling time is {milling.estimate_milling_time(self.microscope, [rectangle_pattern_1, rectangle_pattern_2])}.")
-        milling.setup_milling(self.microscope, ion_milling_settings)
-        milling.run_milling(self.microscope, ion_milling_settings.milling_voltage, ion_milling_settings.milling_current)
-        print(f"Milling finished.")
-        self.acquire_image('ion')
-        milling.finish_milling(self.microscope, imaging_current=ion_imaging_settings.milling_current,
-                               imaging_voltage=ion_imaging_settings.milling_voltage)
+        # print(f"The estimated milling time is {milling.estimate_milling_time(self.microscope, [rectangle_pattern_1, rectangle_pattern_2])}.")
+        # milling.setup_milling(self.microscope, ion_milling_settings)
+        # milling.run_milling(self.microscope, ion_milling_settings.milling_voltage, ion_milling_settings.milling_current)
+        # print(f"Milling finished.")
+        # self.acquire_image('ion')
+        # milling.finish_milling(self.microscope, imaging_current=ion_imaging_settings.milling_current,
+        #                        imaging_voltage=ion_imaging_settings.milling_voltage)
 
 class Gui(QWidget):
     '''
@@ -229,7 +215,6 @@ class Gui(QWidget):
         # Create a vertical layout of buttons to acquire images
         acquire_button_layout = QVBoxLayout()
         self.button_eb = QPushButton("Electron Beam Image")
-        #self.button_eb.clicked.connect(lambda: self.fibsem.acquire_image('electron'))
         self.button_eb.clicked.connect(lambda: self.fibsem.acquire_image('electron'))
         acquire_button_layout.addWidget(self.button_eb)
         self.button_ion = QPushButton("Ion Beam Image")

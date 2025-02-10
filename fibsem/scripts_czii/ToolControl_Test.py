@@ -9,6 +9,7 @@ import os
 from datetime import datetime
 import numpy as np
 import ast
+import inspect
 import time
 import re
 
@@ -62,8 +63,11 @@ class Fibsemcontrol():
                 if ":" in line:  # Ensure it's a key-value pair
                     key, value = line.strip().split(":", 1)  # Split on first ":"
                     dictionary[key.strip()] = value.strip()
-        keys_to_convert_float = ['milling_current', 'spacing', 'spot_size', 'rate', 'milling_voltage', 'dwell_time', 'hfw', 'voltage', 'working_distance', 'shift', 'beam_current', 'scan_rotation']
-        keys_to_convert_bool = ['autocontrast', 'autogamma', 'save', 'drift_correction', 'frame_integration', 'line_integration', 'stigmation', 'shift', 'reduced_area']
+        keys_to_convert_float = ['milling_current', 'line_integration', 'frame_integration', 'spacing',
+                                 'spot_size', 'rate', 'milling_voltage', 'dwell_time', 'hfw', 'voltage',
+                                 'working_distance', 'beam_current', 'scan_rotation']
+        keys_to_convert_bool = ['autocontrast', 'autogamma', 'save', 'drift_correction', 'reduced_area']
+        keys_to_convert_points = ['stigmation', 'shift']
         str_to_bool = {"true": True, "false": False, "none": None}
         for key in keys_to_convert_bool:
             if key in dictionary:
@@ -72,9 +76,10 @@ class Fibsemcontrol():
             if key in dictionary:
                 if dictionary[key] is not None:
                     dictionary[key] = float(dictionary[key])
+        for key in keys_to_convert_points:
+            dictionary[key] = {'x': float(dictionary.pop(f"{key}X")), 'y': float(dictionary.pop(f"{key}Y"))}
         if 'resolution' in dictionary:
             dictionary['resolution'] = ast.literal_eval(dictionary['resolution'])
-        #     resolution_float = [float(i) for i in resolution_list]
         return dictionary
 
     def acquire_image(self, key):
@@ -94,29 +99,26 @@ class Fibsemcontrol():
                         }
         self.settings.image.path = self.folder_path
         plt.ion()  # needed to avoid the QCoreApplication::exec: The event loop is already running error
-        fixed_parameters = {
-            'filename': acquisition_time,
-            'beam_type': dict_beamtypes[key],
-            'path': self.folder_path,
-        }
-        ion_imaging_settings = milling.FibsemMillingSettings(
-            milling_voltage=3000,
-            milling_current=60e-12,
-        )
         if key == 'electron' or key == 'ion':
+            fixed_parameters = {
+                'filename': acquisition_time,
+                'beam_type': dict_beamtypes[key],
+                'path': self.folder_path,
+            }
             try:
                 filename_imaging = rf"imaging_{key}.txt"
                 imaging_settings = structures.ImageSettings.from_dict(self.read_from_dict(filename_imaging))
-                structures.BeamSettings(fixed_parameters['beam_type']).from_dict(self.read_from_dict(filename_imaging))
-                structures.BeamSystemSettings(beam_type=fixed_parameters['beam_type'],
+                beam_settings = structures.BeamSettings(fixed_parameters['beam_type']).from_dict(self.read_from_dict(filename_imaging))
+                print(beam_settings)
+                beam_system_settings = structures.BeamSystemSettings(beam_type=fixed_parameters['beam_type'],
                                               beam=getattr(self.settings.system, key).beam,
                                               detector=getattr(self.settings.system, key).detector,
                                               eucentric_height=getattr(self.settings.system, key).eucentric_height,
                                               column_tilt=getattr(self.settings.system, key).column_tilt,
                                               enabled=getattr(self.settings.system, key).enabled
                                               )
-                structures.BeamSystemSettings.plasma = self.read_from_dict(filename_imaging)['plasma']
-                structures.BeamSystemSettings.plasma_gas = self.read_from_dict(filename_imaging)['plasma_source']
+                beam_system_settings.plasma = self.read_from_dict(filename_imaging)['plasma']
+                beam_system_settings.plasma_gas = self.read_from_dict(filename_imaging)['plasma_source']
                 for key1, value in fixed_parameters.items():
                     setattr(imaging_settings, key1, value)
                 image = acquire.new_image(self.microscope, imaging_settings)
@@ -167,7 +169,7 @@ class Fibsemcontrol():
             width=10.0e-6,
             height=50.0e-6,
             depth=3e-6,
-            rotation=45,
+            rotation=30,
             centre_x=centerX,
             centre_y=centerY,
             scan_direction="TopToBottom", #("BottomToTop", "LeftToRight", "RightToLeft")
@@ -176,10 +178,12 @@ class Fibsemcontrol():
             time=300,
             is_exclusion=False
         )
+        rectangle_pattern_2 = rectangle_pattern_1
+        rectangle_pattern_2.rotation = -30
         # I am confused, how does it set the time when I also set the depth?
         self.acquire_image('ion')
         try:
-            milling.draw_pattern(self.microscope, rectangle_pattern_1)
+            milling.draw_patterns(self.microscope, [rectangle_pattern_1, rectangle_pattern_2])
             print('finished')
         except Exception as e:
             print(f"The milling pattern was not set: {e}")

@@ -1,5 +1,5 @@
 from fibsem import acquire, utils, microscope, structures, milling
-from fibsem.structures import BeamType, FibsemStagePosition, FibsemImageMetadata
+from fibsem.structures import BeamType, FibsemStagePosition
 from tkinter import messagebox
 from PyQt5.QtWidgets import QApplication, QWidget, QLineEdit, QPushButton, QHBoxLayout, QVBoxLayout, QLabel
 import matplotlib.pyplot as plt
@@ -62,7 +62,7 @@ class Fibsemcontrol():
                 if ":" in line:  # Ensure it's a key-value pair
                     key, value = line.strip().split(":", 1)  # Split on first ":"
                     dictionary[key.strip()] = value.strip()
-        keys_to_convert_float = ['milling_current', 'milling_voltage', 'dwell_time', 'hfw', 'voltage', 'working_distance', 'shift', 'beam_current', 'scan_rotation']
+        keys_to_convert_float = ['milling_current', 'spacing', 'spot_size', 'rate', 'milling_voltage', 'dwell_time', 'hfw', 'voltage', 'working_distance', 'shift', 'beam_current', 'scan_rotation']
         keys_to_convert_bool = ['autocontrast', 'autogamma', 'save', 'drift_correction', 'frame_integration', 'line_integration', 'stigmation', 'shift', 'reduced_area']
         str_to_bool = {"true": True, "false": False, "none": None}
         for key in keys_to_convert_bool:
@@ -138,6 +138,11 @@ class Fibsemcontrol():
                 return
         plt.show()
 
+    def get_stage_position(self):
+        current_stage_position = self.microscope.get_stage_position()
+        print(f"The current stage position is {current_stage_position}")
+        return current_stage_position
+
     def move_stage(self, new_stage_position, mode):
         print(f"The current stage position is {self.microscope.get_stage_position()}.")
         try:
@@ -159,37 +164,39 @@ class Fibsemcontrol():
 
     def create_fiducials(self, centerX=0, centerY=0):
         rectangle_pattern_1 = structures.FibsemRectangleSettings(
-            rotation=+45,
             width=10.0e-6,
             height=50.0e-6,
+            depth=3e-6,
+            rotation=45,
             centre_x=centerX,
             centre_y=centerY,
-            depth=3e-6,
-            cleaning_cross_section=False
+            scan_direction="TopToBottom", #("BottomToTop", "LeftToRight", "RightToLeft")
+            cleaning_cross_section=structures.CrossSectionPattern.Rectangle, #.RegularCrossSection, CleaningCrossSection
+            passes=10,
+            time=300,
+            is_exclusion=False
         )
-
-        rectangle_pattern_2 = structures.FibsemRectangleSettings(
-            rotation=-45,
-            width=10.0e-6,
-            height=100.0e-6,
-            centre_x=centerX,
-            centre_y=centerY,
-            cleaning_cross_section=False,
-            depth=3e-6,
-        )
-
-        ion_milling_settings = milling.FibsemMillingSettings(
-            milling_voltage=30000,
-            milling_current=15e-9,
-            patterning_mode='Serial',
-        )
-        ion_imaging_settings = milling.FibsemMillingSettings(
-            milling_voltage=3000,
-            milling_current=60e-12,
-        )
+        # I am confused, how does it set the time when I also set the depth?
         self.acquire_image('ion')
-        milling.draw_patterns(self.microscope, [rectangle_pattern_1, rectangle_pattern_2])
-        print(f"The milling current and milling voltage are set.")
+        try:
+            milling.draw_pattern(self.microscope, rectangle_pattern_1)
+            print('finished')
+        except Exception as e:
+            print(f"The milling pattern was not set: {e}")
+        try:
+            filename_milling = 'milling.txt'
+            milling_settings = structures.FibsemMillingSettings.from_dict(self.read_from_dict(filename_milling))
+            print(f"Milling setup finished.")
+        except Exception as e:
+            print(f"The milling setup failed: {e}")
+        try:
+            #milling.setup_milling(self.microscope, milling_settings)
+            #milling.run_milling(self.microscope, milling_current=milling_settings.milling_current,
+            #                                     milling_voltage=milling_settings.milling_voltage)
+            self.acquire_image("ion")
+        except Exception as e:
+            print(f"The milling failed: {e}")
+
         # print(f"The estimated milling time is {milling.estimate_milling_time(self.microscope, [rectangle_pattern_1, rectangle_pattern_2])}.")
         # milling.setup_milling(self.microscope, ion_milling_settings)
         # milling.run_milling(self.microscope, ion_milling_settings.milling_voltage, ion_milling_settings.milling_current)
@@ -263,6 +270,9 @@ class Gui(QWidget):
         fiducial_button = QPushButton("Fiducial", self)
         fiducial_button.clicked.connect(fibsem.create_fiducials)
         milling_layout.addWidget(fiducial_button)
+        stage_position_button = QPushButton("Stage Position", self)
+        stage_position_button.clicked.connect(fibsem.get_stage_position)
+        milling_layout.addWidget(stage_position_button)
         acquire_button_layout.addLayout(milling_layout)
 
         # Set the main layout for the widget

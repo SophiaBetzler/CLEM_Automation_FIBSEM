@@ -12,6 +12,7 @@ import ast
 import inspect
 import time
 import re
+import yaml
 
 def error_message(text):
     messagebox.showerror("Error", text)
@@ -52,6 +53,44 @@ class Fibsemcontrol():
             error_message(f"Connection to microscope failed: {e}")
             sys.exit()
 
+    def convert_txt_to_yaml(self, filename_milling, milling_protocol):
+
+        def insert_nested_dict(data, key_path, value):
+            keys = key_path.split(".")
+            d = data
+            for key in keys[:-1]:
+                d = d.setdefault(key, {})
+            d[keys[-1]] = value
+            print(f"The value is {d}.")
+
+        def txt_to_yaml(txt_filename, yaml_filename):
+            dictionary = {}
+
+            keys_convert_to_float = ['width', 'height', 'depth', 'rotation', 'centre_x', 'centre_y', 'milling_current',
+                                     'milling_voltage', 'hfw']
+            keys_convert_to_str = ['scan_direction', 'cross_section', 'patterning_mode', 'application_file']
+
+            with open(txt_filename, "r") as txt_file:
+                for line in txt_file:
+                    if ":" in line:
+                        key_path, value = line.strip().split(":", 1)
+                        value = value.strip()
+                        if "." in key_path:
+                            key = key_path.split(".", 1)[1]
+                        else:
+                            key = key_path
+                        if key in keys_convert_to_float:
+                            insert_nested_dict(dictionary, key_path.strip(), float(value))
+                        elif key in keys_convert_to_str:
+                            insert_nested_dict(dictionary, key_path.strip(), str(value))
+                        else:
+                            insert_nested_dict(dictionary, key_path.strip(), value)
+
+            with open(yaml_filename, "w") as yaml_file:
+                yaml.dump(dictionary, yaml_file, default_flow_style=False, sort_keys=False)
+
+        txt_to_yaml(os.path.join(self.folder_path + '/' + filename_milling), os.path.join(self.folder_path +  '/Temp/' + milling_protocol))
+
     def read_from_dict(self, filename):
         """
         The user should create txt files for his experiment conditions which are then converted to dicts and used
@@ -74,9 +113,9 @@ class Fibsemcontrol():
 
         ###########I AM LOOKING AT THIS PROBLEM HERE #####################
         dict_pattern_type = {
-            'Rectangle': structures.CrossSectionPattern.Rectangle,
-            'Regular': structures.CrossSectionPattern.RegularCrossSection,
-            'CleaningCrossSection': structures.CrossSectionPattern.CleaningCrossSection
+            'Rectangle': structures.CrossSectionPattern.Rectangle.name,
+            'Regular': structures.CrossSectionPattern.RegularCrossSection.name,
+            'CleaningCrossSection': structures.CrossSectionPattern.CleaningCrossSection.name
         }
         str_to_bool = {"true": True, "false": False, "none": None}
         for key in keys_convert_to_bool:
@@ -97,7 +136,6 @@ class Fibsemcontrol():
         for key in keys_convert_to_int:
             if key in dictionary:
                 dictionary[key] = int(dictionary[key])
-
         return dictionary
 
     def acquire_image(self, key):
@@ -165,47 +203,87 @@ class Fibsemcontrol():
 
 
     def get_stage_position(self):
-        current_stage_position = self.microscope.get_stage_position()
-        print(f"The current stage position is {current_stage_position}")
-        return current_stage_position
+        return  self.microscope.get_stage_position()
 
-    def move_stage(self, new_stage_position, mode):
-        print(f"The current stage position is {self.microscope.get_stage_position()}.")
-        try:
-            stage_movement = FibsemStagePosition(x=float(new_stage_position[0])*1e-3,
-                                y=float(new_stage_position[1])*1e-3,
-                                z=float(new_stage_position[2])*1e-3,
-                                r=np.deg2rad(float(new_stage_position[3])),
-                                t=np.deg2rad(float(new_stage_position[4])))
-            print(f"The current stage position is {self.microscope.get_stage_position()}.")
-            if mode == 'relative':
-                self.microscope.move_stage_relative(stage_movement)
-            elif mode == 'absolute':
-                self.microscope.move_stage_absolute(stage_movement)
-            else:
-                return
-        except Exception as e:
-            print(f"The stage movement failed: {e}")
+    def move_stage(self, new_stage_position=None, mode=None, preset_stage_position=None):
+        """
+        Move the stage, either to user defined values or to stored stage positions which can be found in the yaml file.
+        new_stage_position: list of values for the new stage position
+        mode: either 'absolute' or 'relative'
+        preset_stage_position: is the name of the preset stage position it is always automatically connected to
+                                mode='absolute'
+        """
+        global stage_movement
+        if new_stage_position and preset_stage_position is not None:
+            raise ValueError(
+                "Only one of 'new_stage_position' or 'preset_stage_position' can be provided, not both.")
+        elif new_stage_position is None and preset_stage_position is None:
+            raise ValueError(
+                "Either 'new_stage_position' or 'preset_stage_position' must be provided.")
+        else:
+            if new_stage_position is not None:
+                if mode is None:
+                    raise ValueError("Mode can not be none, but must be absolute or relative.")
+                else:
+                    stage_movement = FibsemStagePosition(x=float(new_stage_position[0]) * 1e-3,
+                                                         y=float(new_stage_position[1]) * 1e-3,
+                                                         z=float(new_stage_position[2]) * 1e-3,
+                                                         r=np.deg2rad(float(new_stage_position[3])),
+                                                         t=np.deg2rad(float(new_stage_position[4])))
+            elif preset_stage_position is not None:
+                mode = 'absolute'
+                with open(os.path.join(self.project_root, 'config', 'czii-stored-stage-positions.yaml'), "r") as file:
+                    data = yaml.safe_load(file)
+                preset_stage_position_values = next((entry for entry in data if entry["name"] == preset_stage_position),
+                                                    None)
+                stage_movement = FibsemStagePosition(x=float(preset_stage_position_values['x']),
+                                                     y=float(preset_stage_position_values['y']),
+                                                     z=float(preset_stage_position_values['z']),
+                                                     r=np.deg2rad(float(preset_stage_position_values['r'])),
+                                                     t=np.deg2rad(float(preset_stage_position_values['t'])))
+            try:
+                 if mode == 'relative':
+                    self.microscope.move_stage_relative(stage_movement)
+                 elif mode == 'absolute':
+                     self.microscope.move_stage_absolute(stage_movement)
+                 else:
+                        return
+            except Exception as e:
+                print(f"The stage movement failed: {e}")
         print(f"The current stage position is {self.microscope.get_stage_position()}.")
 
     def create_fiducials(self, centerX=0, centerY=0):
+        """
+        Creates a fiducial based on the settings stored in the milling.txt file
+        """
         filename_milling = 'milling.txt'
-        filename_imaging = 'imaging_ion.txt'
-        rectangle_pattern_1 = structures.FibsemRectangleSettings.from_dict(self.read_from_dict(filename_milling))
-        print(rectangle_pattern_1.__dict__)
-        rectangle_pattern_2 = rectangle_pattern_1
-        rectangle_pattern_2.rotation = -30
+        self.convert_txt_to_yaml(filename_milling, 'milling_protocol.yaml')
+        PROTOCOL_PATH = os.path.join(os.path.dirname(__file__), os.path.join(self.folder_path + "/Temp/milling_protocol.yaml"))
+        _, milling_settings = utils.setup_session(protocol_path=PROTOCOL_PATH)
+        self.move_stage(preset_stage_position=milling_settings.protocol['fiducial']['stage_position'])
+        try:
+            rectangle_pattern_1 = structures.FibsemRectangleSettings.from_dict(milling_settings.protocol['fiducial'])
+            rectangle_pattern_2 = rectangle_pattern_1
+            rectangle_pattern_2.rotation = -rectangle_pattern_1.rotation
+        except Exception as e:
+            print(f"The fiducial creation failed because of {e}.")
         image = self.acquire_image('ion')
         milling_settings = structures.FibsemMillingSettings.from_dict(self.read_from_dict(filename_milling))
-        imaging_settings = structures.ImageSettings.from_dict(self.read_from_dict(filename_imaging))
-        milling_stage = milling.FibsemMillingStage(
-            name="Custom Milling Stage",
-            num=1,
-            alignment=milling.MillingAlignment(enabled=True),
-            milling=milling_settings,
-            imaging=imaging_settings,
-            pattern=milling.base.get_pattern('rectangle', config=rectangle_pattern_1.__dict__),
-        )
+        ####I AM HERE ###############
+
+
+
+        try:
+            milling_stage = milling.FibsemMillingStage(
+                name="Custom Milling Stage",
+                num=1,
+                alignment=milling.MillingAlignment(enabled=True),
+                milling=milling_settings,
+                imaging=imaging_settings,
+                pattern=rectangle_pattern_1,
+            )
+        except Exception as e:
+            print(f"Setting the milling stages failed: {e}")
         try:
             milling.patterning.plotting.draw_milling_patterns(image, [milling_stage])
             print('Successfully drew the milling pattern.')
@@ -327,9 +405,8 @@ if __name__ == "__main__":
     acquisition_time = datetime.now().strftime("%H-%M")
     if not os.path.exists(folder_path):
         os.makedirs(folder_path)
-    else:
-        print('Directory already exists')
-
+    if not os.path.exists(os.path.join(folder_path + '/Temp')):
+        os.makedirs(folder_path + '/Temp')
     app = QApplication(sys.argv)
     fibsem = Fibsemcontrol(folder_path)
     gui = Gui(fibsem)

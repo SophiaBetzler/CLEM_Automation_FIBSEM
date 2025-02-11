@@ -41,7 +41,7 @@ class Fibsemcontrol():
             config_path = os.path.join(self.project_root, 'config', 'czii-tfs-hydra-configuration.yaml')
             #for arctis microscope use:
             #config_path = os.path.join(self.project_root, 'config', 'tfs-arctis-configuration.yaml')
-            # self.microscope, self.settings = utils.setup_session(manufacturer='Thermo', ip_address='192.168.0.1',
+            #self.microscope, self.settings = utils.setup_session(manufacturer='Thermo', ip_address='192.168.0.1',
             #                                                      config_path=config_path)
             #
             self.microscope, self.settings = utils.setup_session(manufacturer='Demo', ip_address='localhost',
@@ -63,23 +63,41 @@ class Fibsemcontrol():
                 if ":" in line:  # Ensure it's a key-value pair
                     key, value = line.strip().split(":", 1)  # Split on first ":"
                     dictionary[key.strip()] = value.strip()
-        keys_to_convert_float = ['milling_current', 'line_integration', 'frame_integration', 'spacing',
+        keys_convert_to_float = ['milling_current', 'line_integration', 'frame_integration', 'spacing',
                                  'spot_size', 'rate', 'milling_voltage', 'dwell_time', 'hfw', 'voltage',
-                                 'working_distance', 'beam_current', 'scan_rotation']
-        keys_to_convert_bool = ['autocontrast', 'autogamma', 'save', 'drift_correction', 'reduced_area']
-        keys_to_convert_points = ['stigmation', 'shift']
+                                 'working_distance', 'beam_current', 'scan_rotation', 'centre_x', 'centre_y',
+                                 'depth', 'rotation', 'width', 'height', 'passes', 'time']
+        keys_convert_to_int = ['frame_integration', 'line_integration']
+        keys_convert_to_bool = ['autocontrast', 'autogamma', 'save', 'drift_correction', 'reduced_area', 'is_exclusion']
+        keys_convert_to_points = ['stigmation', 'shift']
+        keys_convert_to_object = ['cross_section']
+
+        ###########I AM LOOKING AT THIS PROBLEM HERE #####################
+        dict_pattern_type = {
+            'Rectangle': structures.CrossSectionPattern.Rectangle,
+            'Regular': structures.CrossSectionPattern.RegularCrossSection,
+            'CleaningCrossSection': structures.CrossSectionPattern.CleaningCrossSection
+        }
         str_to_bool = {"true": True, "false": False, "none": None}
-        for key in keys_to_convert_bool:
+        for key in keys_convert_to_bool:
             if key in dictionary:
                 dictionary[key] = str_to_bool.get(dictionary[key].lower(), None)
-        for key in keys_to_convert_float:
+        for key in keys_convert_to_float:
             if key in dictionary:
                 if dictionary[key] is not None:
                     dictionary[key] = float(dictionary[key])
-        for key in keys_to_convert_points:
-            dictionary[key] = {'x': float(dictionary.pop(f"{key}X")), 'y': float(dictionary.pop(f"{key}Y"))}
+        for key in keys_convert_to_points:
+            if any(f"{key}{suffix}" in dictionary for suffix in ["X", "Y"]):
+                dictionary[key] = {'x': float(dictionary.pop(f"{key}X")), 'y': float(dictionary.pop(f"{key}Y"))}
         if 'resolution' in dictionary:
             dictionary['resolution'] = ast.literal_eval(dictionary['resolution'])
+        for key in keys_convert_to_object:
+            if key in dictionary:
+                dictionary[key] = dict_pattern_type[dictionary[key]]
+        for key in keys_convert_to_int:
+            if key in dictionary:
+                dictionary[key] = int(dictionary[key])
+
         return dictionary
 
     def acquire_image(self, key):
@@ -107,18 +125,22 @@ class Fibsemcontrol():
             }
             try:
                 filename_imaging = rf"imaging_{key}.txt"
-                imaging_settings = structures.ImageSettings.from_dict(self.read_from_dict(filename_imaging))
-                beam_settings = structures.BeamSettings(fixed_parameters['beam_type']).from_dict(self.read_from_dict(filename_imaging))
-                print(beam_settings)
+                beam_settings = structures.BeamSettings.from_dict(self.read_from_dict(filename_imaging),
+                                                                  beam_type=fixed_parameters['beam_type'])
                 beam_system_settings = structures.BeamSystemSettings(beam_type=fixed_parameters['beam_type'],
-                                              beam=getattr(self.settings.system, key).beam,
-                                              detector=getattr(self.settings.system, key).detector,
-                                              eucentric_height=getattr(self.settings.system, key).eucentric_height,
-                                              column_tilt=getattr(self.settings.system, key).column_tilt,
-                                              enabled=getattr(self.settings.system, key).enabled
-                                              )
+                                                                     beam=getattr(self.settings.system, key).beam,
+                                                                     detector=getattr(self.settings.system,
+                                                                                      key).detector,
+                                                                     eucentric_height=getattr(self.settings.system,
+                                                                                              key).eucentric_height,
+                                                                     column_tilt=getattr(self.settings.system,
+                                                                                         key).column_tilt,
+                                                                     enabled=getattr(self.settings.system, key).enabled
+                                                                     )
                 beam_system_settings.plasma = self.read_from_dict(filename_imaging)['plasma']
                 beam_system_settings.plasma_gas = self.read_from_dict(filename_imaging)['plasma_source']
+                imaging_settings = structures.ImageSettings.from_dict(self.read_from_dict(filename_imaging))
+
                 for key1, value in fixed_parameters.items():
                     setattr(imaging_settings, key1, value)
                 image = acquire.new_image(self.microscope, imaging_settings)
@@ -139,6 +161,8 @@ class Fibsemcontrol():
         else:
                 return
         plt.show()
+        return image
+
 
     def get_stage_position(self):
         current_stage_position = self.microscope.get_stage_position()
@@ -165,36 +189,39 @@ class Fibsemcontrol():
         print(f"The current stage position is {self.microscope.get_stage_position()}.")
 
     def create_fiducials(self, centerX=0, centerY=0):
-        rectangle_pattern_1 = structures.FibsemRectangleSettings(
-            width=10.0e-6,
-            height=50.0e-6,
-            depth=3e-6,
-            rotation=30,
-            centre_x=centerX,
-            centre_y=centerY,
-            scan_direction="TopToBottom", #("BottomToTop", "LeftToRight", "RightToLeft")
-            cleaning_cross_section=structures.CrossSectionPattern.Rectangle, #.RegularCrossSection, CleaningCrossSection
-            passes=10,
-            time=300,
-            is_exclusion=False
-        )
+        filename_milling = 'milling.txt'
+        filename_imaging = 'imaging_ion.txt'
+        rectangle_pattern_1 = structures.FibsemRectangleSettings.from_dict(self.read_from_dict(filename_milling))
+        print(rectangle_pattern_1.__dict__)
         rectangle_pattern_2 = rectangle_pattern_1
         rectangle_pattern_2.rotation = -30
-        # I am confused, how does it set the time when I also set the depth?
-        self.acquire_image('ion')
+        image = self.acquire_image('ion')
+        milling_settings = structures.FibsemMillingSettings.from_dict(self.read_from_dict(filename_milling))
+        imaging_settings = structures.ImageSettings.from_dict(self.read_from_dict(filename_imaging))
+        milling_stage = milling.FibsemMillingStage(
+            name="Custom Milling Stage",
+            num=1,
+            alignment=milling.MillingAlignment(enabled=True),
+            milling=milling_settings,
+            imaging=imaging_settings,
+            pattern=milling.base.get_pattern('rectangle', config=rectangle_pattern_1.__dict__),
+        )
         try:
-            milling.draw_patterns(self.microscope, [rectangle_pattern_1, rectangle_pattern_2])
-            print('finished')
+            milling.patterning.plotting.draw_milling_patterns(image, [milling_stage])
+            print('Successfully drew the milling pattern.')
         except Exception as e:
             print(f"The milling pattern was not set: {e}")
         try:
             filename_milling = 'milling.txt'
             milling_settings = structures.FibsemMillingSettings.from_dict(self.read_from_dict(filename_milling))
+
             print(f"Milling setup finished.")
         except Exception as e:
             print(f"The milling setup failed: {e}")
         try:
-            #milling.setup_milling(self.microscope, milling_settings)
+
+            milling.setup_milling(self.microscope, milling_settings)
+
             #milling.run_milling(self.microscope, milling_current=milling_settings.milling_current,
             #                                     milling_voltage=milling_settings.milling_voltage)
             self.acquire_image("ion")

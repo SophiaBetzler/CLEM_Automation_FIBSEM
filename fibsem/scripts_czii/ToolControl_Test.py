@@ -1,4 +1,4 @@
-from fibsem import acquire, utils, microscope, structures, milling
+from fibsem import acquire, utils, microscope, structures, milling, calibration, gis
 from fibsem.structures import BeamType, FibsemStagePosition
 from tkinter import messagebox
 from PyQt5.QtWidgets import QApplication, QWidget, QLineEdit, QPushButton, QHBoxLayout, QVBoxLayout, QLabel
@@ -102,12 +102,13 @@ class Fibsemcontrol():
                 if ":" in line:  # Ensure it's a key-value pair
                     key, value = line.strip().split(":", 1)  # Split on first ":"
                     dictionary[key.strip()] = value.strip()
-        keys_convert_to_float = ['milling_current', 'line_integration', 'frame_integration', 'spacing',
+        keys_convert_to_float = ['milling_current', 'milling_voltage', 'line_integration', 'frame_integration', 'spacing',
                                  'spot_size', 'rate', 'milling_voltage', 'dwell_time', 'hfw', 'voltage',
-                                 'working_distance', 'beam_current', 'scan_rotation', 'centre_x', 'centre_y',
+                                 'working_distance', 'beam_current', 'center_x', 'center_y',
                                  'depth', 'rotation', 'width', 'height', 'passes', 'time']
         keys_convert_to_int = ['frame_integration', 'line_integration']
-        keys_convert_to_bool = ['autocontrast', 'autogamma', 'save', 'drift_correction', 'reduced_area', 'is_exclusion']
+        keys_convert_to_bool = ['autocontrast', 'autogamma', 'save', 'drift_correction', 'reduced_area', 'is_exclusion'
+                                'aquire_image']
         keys_convert_to_points = ['stigmation', 'shift']
         keys_convert_to_object = ['cross_section']
 
@@ -127,7 +128,10 @@ class Fibsemcontrol():
                     dictionary[key] = float(dictionary[key])
         for key in keys_convert_to_points:
             if any(f"{key}{suffix}" in dictionary for suffix in ["X", "Y"]):
-                dictionary[key] = {'x': float(dictionary.pop(f"{key}X")), 'y': float(dictionary.pop(f"{key}Y"))}
+                if key == 'Center':
+                    dictionary['Point'] = {'x': float(dictionary.pop(f"{key}X")), 'y': float(dictionary.pop(f"{key}Y"))}
+                else:
+                    dictionary[key] = {'x': float(dictionary.pop(f"{key}X")), 'y': float(dictionary.pop(f"{key}Y"))}
         if 'resolution' in dictionary:
             dictionary['resolution'] = ast.literal_eval(dictionary['resolution'])
         for key in keys_convert_to_object:
@@ -136,7 +140,18 @@ class Fibsemcontrol():
         for key in keys_convert_to_int:
             if key in dictionary:
                 dictionary[key] = int(dictionary[key])
+        if 'scan_rotation' in dictionary:
+            dictionary['scan_rotation'] = np.deg2rad(float(dictionary['scan_rotation']))
         return dictionary
+
+    def read_from_yaml(self, filename, name):
+        with open(f"{filename}.yaml", 'r') as file:
+            data = yaml.safe_load(file)
+        entry = next((item for item in data if item['name'] == name), None)
+        if entry:
+            return entry
+    def auto_focus_image(self):
+        calibration.auto_focus_beam(self.microscope, beam_type=BeamType.ELECTRON)
 
     def acquire_image(self, key):
         '''
@@ -150,35 +165,28 @@ class Fibsemcontrol():
         dict_beamtypes = {
                 'electron': BeamType.ELECTRON,
                 'ion': BeamType.ION,
-                'both': None,
+                'both': BeamType.ION,
+                'multiple': BeamType.ELECTRON,
+                'tiles': BeamType.ELECTRON,
                 #'fl': BeamType.FL
                         }
         self.settings.image.path = self.folder_path
         plt.ion()  # needed to avoid the QCoreApplication::exec: The event loop is already running error
+        filename_milling = rf"milling_base.txt"
+        fixed_parameters = {
+            'filename': acquisition_time,
+            'beam_type': dict_beamtypes[key],
+            'path': self.folder_path,
+        }
         if key == 'electron' or key == 'ion':
-            fixed_parameters = {
-                'filename': acquisition_time,
-                'beam_type': dict_beamtypes[key],
-                'path': self.folder_path,
-            }
             try:
                 filename_imaging = rf"imaging_{key}.txt"
                 beam_settings = structures.BeamSettings.from_dict(self.read_from_dict(filename_imaging),
                                                                   beam_type=fixed_parameters['beam_type'])
-                beam_system_settings = structures.BeamSystemSettings(beam_type=fixed_parameters['beam_type'],
-                                                                     beam=getattr(self.settings.system, key).beam,
-                                                                     detector=getattr(self.settings.system,
-                                                                                      key).detector,
-                                                                     eucentric_height=getattr(self.settings.system,
-                                                                                              key).eucentric_height,
-                                                                     column_tilt=getattr(self.settings.system,
-                                                                                         key).column_tilt,
-                                                                     enabled=getattr(self.settings.system, key).enabled
-                                                                     )
-                beam_system_settings.plasma = self.read_from_dict(filename_imaging)['plasma']
-                beam_system_settings.plasma_gas = self.read_from_dict(filename_imaging)['plasma_source']
+                self.microscope.set("plasma_gas",self.read_from_dict(filename_milling)['plasma_source'], beam_type=BeamType.ION)
+                self.microscope.set("plasma", self.read_from_dict(filename_milling)['plasma'], beam_type=BeamType.ION)
+                self.microscope.set_beam_settings(beam_settings)
                 imaging_settings = structures.ImageSettings.from_dict(self.read_from_dict(filename_imaging))
-
                 for key1, value in fixed_parameters.items():
                     setattr(imaging_settings, key1, value)
                 image = acquire.new_image(self.microscope, imaging_settings)
@@ -187,8 +195,16 @@ class Fibsemcontrol():
                 print(f"Image acquisition failed: {e}")
         elif key == 'both':
             try:
-                image_eb, image_ion = acquire.take_reference_images(self.microscope, self.settings.image)
-                self.settings.image.filename = acquisition_time + '_' + 'ebeam_ion'
+                key_both = 'ion'
+                beam_settings = structures.BeamSettings.from_dict(self.read_from_dict(rf"imaging_{key_both}.txt"),
+                                                                  beam_type=BeamType.ION)
+                self.microscope.set("plasma_gas",self.read_from_dict(filename_milling)['plasma_source'], beam_type=fixed_parameters['beam_type'])
+                self.microscope.set("plasma", self.read_from_dict(filename_milling)['plasma'], beam_type=fixed_parameters['beam_type'])
+                self.microscope.set_beam_settings(beam_settings)
+                imaging_settings = structures.ImageSettings.from_dict(self.read_from_dict(rf"imaging_{key_both}.txt"))
+                imaging_settings.filename = acquisition_time
+                imaging_settings.path = self.folder_path
+                image_eb, image_ion = acquire.take_reference_images(self.microscope, imaging_settings)
                 fig, ax = plt.subplots(1, 2, figsize=(10, 7))
                 ax[0].imshow(image_eb.data, cmap="gray")
                 ax[0].set_title("Electron Image")
@@ -196,14 +212,70 @@ class Fibsemcontrol():
                 ax[1].set_title("Ion Image")
             except Exception as e:
                 print(f"Image acquisition failed: {e}.")
+        elif key == 'multiple':
+            hfws = [float(80e-6), float(150e-6), float(400e-6), float(900e-6)]
+            key_multiple = 'electron'
+            try:
+                imaging_settings = structures.ImageSettings.from_dict(self.read_from_dict(rf"imaging_{key_multiple}.txt"))
+                for i, hfw in enumerate(hfws):
+                    imaging_settings.hfw = hfw
+                    imaging_settings.filename = f"{acquisition_time}_{i}_{hfw*1000000}_um."
+                    imaging_settings.path = self.folder_path
+                    acquire.new_image(self.microscope, imaging_settings)
+            except Exception as e:
+                print(f"The image acquisition failed: {e}")
+        elif key == 'tiles':
+            self.microscope.move_flat_to_beam(BeamType.ELECTRON)
+            image_settings = self.settings.image
+            image_settings.hfw = 80e-6
+            image_settings.resolution = [1024, 1024]
+            image_settings.beam_type = BeamType.ELECTRON
+            image_settings.save = True
+            image_settings.path = os.path.join(os.getcwd(), "demo", "tile")
+            os.makedirs(image_settings.path, exist_ok=True)
+
+            # tile settings
+            dx, dy = image_settings.hfw, image_settings.hfw
+            nrows, ncols = 3, 3
+
+            # tile
+            initial_position = self.microscope.get_stage_position()
+            for i in range(nrows):
+
+                # restore position
+                self.microscope.move_stage_absolute(initial_position)
+                # stable movement dy
+                self.microscope.stable_move(dx=0, dy=dy * i, beam_type=BeamType.ELECTRON)
+
+                for j in range(ncols):
+                    # stable movement dx
+                    self.microscope.stable_move(dx=dx, dy=0, beam_type=BeamType.ELECTRON)
+                    # acquire images with both beams
+                    image_settings.filename = f"tile_{i:03d}_{j:03d}"
+                    ib_image = acquire.new_image(self.microscope, image_settings)
+            import glob
+            filenames = sorted(glob.glob(os.path.join(image_settings.path, "tile*.tif")))
+
+            fig, axes = plt.subplots(nrows, ncols, figsize=(10, 10))
+            for i, fname in enumerate(filenames):
+                image = structures.FibsemImage.load(fname)
+                ax = axes[i // ncols][i % ncols]
+                ax.imshow(image.data, cmap="gray")
+                ax.axis("off")
+
+            plt.tight_layout()
+            plt.subplots_adjust(hspace=0.01, wspace=0.01)
+            plt.savefig(os.path.join(image_settings.path, "tiles.png"), dpi=300)
+            plt.show()
         else:
                 return
         plt.show()
-        return image
 
 
     def get_stage_position(self):
-        return  self.microscope.get_stage_position()
+        current_stage_position = self.microscope.get_stage_position()
+        print(f"The current stage position is {current_stage_position}.")
+        return current_stage_position
 
     def move_stage(self, new_stage_position=None, mode=None, preset_stage_position=None):
         """
@@ -252,67 +324,36 @@ class Fibsemcontrol():
                 print(f"The stage movement failed: {e}")
         print(f"The current stage position is {self.microscope.get_stage_position()}.")
 
-    def create_fiducials(self, centerX=0, centerY=0):
+    def create_fiducials(self):
         """
-        Creates a fiducial based on the settings stored in the milling.txt file
+        Creates a fiducial based on the settings stored in the milling_base.txt file
         """
-        filename_milling = 'milling.txt'
-        self.convert_txt_to_yaml(filename_milling, 'milling_protocol.yaml')
-        PROTOCOL_PATH = os.path.join(os.path.dirname(__file__), os.path.join(self.folder_path + "/Temp/milling_protocol.yaml"))
-        _, milling_settings = utils.setup_session(protocol_path=PROTOCOL_PATH)
-        self.move_stage(preset_stage_position=milling_settings.protocol['fiducial']['stage_position'])
-        try:
-            rectangle_pattern_1 = structures.FibsemRectangleSettings.from_dict(milling_settings.protocol['fiducial'])
-            rectangle_pattern_2 = rectangle_pattern_1
-            rectangle_pattern_2.rotation = -rectangle_pattern_1.rotation
-        except Exception as e:
-            print(f"The fiducial creation failed because of {e}.")
-        image = self.acquire_image('ion')
+        filename_milling = 'milling_base.txt'
+        pattern_1 = milling.patterning.patterns2.FiducialPattern.from_dict(self.read_from_dict(filename_milling))
+        self.microscope.set("plasma_gas", self.read_from_dict(filename_milling)['plasma_source'],
+                            beam_type=BeamType.ION)
+        self.microscope.set("plasma", self.read_from_dict(filename_milling)['plasma'], beam_type=BeamType.ION)
         milling_settings = structures.FibsemMillingSettings.from_dict(self.read_from_dict(filename_milling))
-        ####I AM HERE ###############
+        milling_alignment = milling.MillingAlignment(enabled=False)
+        milling_stages = milling.FibsemMillingStage(
+            name="Fiducial",
+            milling = milling_settings,
+            pattern = pattern_1,
+            alignment = milling_alignment,
+        )
+        milling.setup_milling(self.microscope, milling_stages)
+        print(f"The milling time is {self.microscope.estimate_milling_time()}")
+        milling.run_milling(self.microscope, milling_current=milling_stages.milling.milling_current, milling_voltage=milling_stages.milling.milling_voltage)
+        print(f"Running the milling finished.")
+        milling.finish_milling(self.microscope)
+        print('Milling finished.')
 
-
-
-        try:
-            milling_stage = milling.FibsemMillingStage(
-                name="Custom Milling Stage",
-                num=1,
-                alignment=milling.MillingAlignment(enabled=True),
-                milling=milling_settings,
-                imaging=imaging_settings,
-                pattern=rectangle_pattern_1,
-            )
-        except Exception as e:
-            print(f"Setting the milling stages failed: {e}")
-        try:
-            milling.patterning.plotting.draw_milling_patterns(image, [milling_stage])
-            print('Successfully drew the milling pattern.')
-        except Exception as e:
-            print(f"The milling pattern was not set: {e}")
-        try:
-            filename_milling = 'milling.txt'
-            milling_settings = structures.FibsemMillingSettings.from_dict(self.read_from_dict(filename_milling))
-
-            print(f"Milling setup finished.")
-        except Exception as e:
-            print(f"The milling setup failed: {e}")
-        try:
-
-            milling.setup_milling(self.microscope, milling_settings)
-
-            #milling.run_milling(self.microscope, milling_current=milling_settings.milling_current,
-            #                                     milling_voltage=milling_settings.milling_voltage)
-            self.acquire_image("ion")
-        except Exception as e:
-            print(f"The milling failed: {e}")
-
-        # print(f"The estimated milling time is {milling.estimate_milling_time(self.microscope, [rectangle_pattern_1, rectangle_pattern_2])}.")
-        # milling.setup_milling(self.microscope, ion_milling_settings)
-        # milling.run_milling(self.microscope, ion_milling_settings.milling_voltage, ion_milling_settings.milling_current)
-        # print(f"Milling finished.")
-        # self.acquire_image('ion')
-        # milling.finish_milling(self.microscope, imaging_current=ion_imaging_settings.milling_current,
-        #                        imaging_voltage=ion_imaging_settings.milling_voltage)
+    def GIS_Coating(self, gridnumber):
+        GIS_Stage_Position = self.read_from_yaml(os.path.join(self.project_root, 'config', 'positions'), rf"grid0{gridnumber}-GIS")
+        self.move_stage([GIS_Stage_Position['x'], GIS_Stage_Position['y'], GIS_Stage_Position['z'], GIS_Stage_Position['r'], GIS_Stage_Position['t']], mode='absolute')
+        gis.gis_protocol = {"time": 10, "hfw": 900.0e-6, "gas": "Pt cryo", "length": None}
+        gis.deposit_platinum(self.microscope, gis.gis_protocol)
+        print("Gas Injection finished")
 
 class Gui(QWidget):
     '''
@@ -339,6 +380,12 @@ class Gui(QWidget):
         self.button_both = QPushButton("Electron and Ion Beam Image")
         self.button_both.clicked.connect(lambda: self.fibsem.acquire_image('both'))
         acquire_button_layout.addWidget(self.button_both)
+        self.button_multiple = QPushButton("Series of Electron Beam Images")
+        self.button_multiple.clicked.connect(lambda: self.fibsem.acquire_image('multiple'))
+        acquire_button_layout.addWidget(self.button_multiple)
+        self.button_tiles = QPushButton("Tiles")
+        self.button_tiles.clicked.connect(lambda: self.fibsem.acquire_image('tiles'))
+        acquire_button_layout.addWidget(self.button_tiles)
         self.button_fl = QPushButton("FL Image")
         self.button_fl.setEnabled(False)
         self.button_fl.clicked.connect(lambda: self.fibsem.acquire_image('fl'))
@@ -383,7 +430,9 @@ class Gui(QWidget):
         stage_position_button.clicked.connect(fibsem.get_stage_position)
         milling_layout.addWidget(stage_position_button)
         acquire_button_layout.addLayout(milling_layout)
-
+        GIS_1_button = QPushButton("GIS Grid1", self)
+        GIS_1_button.clicked.connect(lambda: fibsem.GIS_Coating(1))
+        milling_layout.addWidget(GIS_1_button)
         # Set the main layout for the widget
         self.setLayout(acquire_button_layout)
 

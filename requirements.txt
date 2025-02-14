@@ -15,4 +15,3 @@ matplotlib_scalebar>=0.8.1
 transformers>=4.36.2
 torch>=2.0.0
 psygnal
-pyqt5

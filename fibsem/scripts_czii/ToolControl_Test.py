@@ -216,12 +216,15 @@ class Fibsemcontrol():
             hfws = [float(80e-6), float(150e-6), float(400e-6), float(900e-6)]
             key_multiple = 'electron'
             try:
+                contrast = {}
                 imaging_settings = structures.ImageSettings.from_dict(self.read_from_dict(rf"imaging_{key_multiple}.txt"))
                 for i, hfw in enumerate(hfws):
                     imaging_settings.hfw = hfw
                     imaging_settings.filename = f"{acquisition_time}_{i}_{hfw*1000000}_um."
                     imaging_settings.path = self.folder_path
-                    acquire.new_image(self.microscope, imaging_settings)
+                    image = acquire.new_image(self.microscope, imaging_settings)
+                    contrast[str(hfw)] = np.std(image.data)
+                print(contrast)
             except Exception as e:
                 print(f"The image acquisition failed: {e}")
         elif key == 'tiles':
@@ -349,8 +352,8 @@ class Fibsemcontrol():
         print('Milling finished.')
 
     def GIS_Coating(self, gridnumber):
-        GIS_Stage_Position = self.read_from_yaml(os.path.join(self.project_root, 'config', 'positions'), rf"grid0{gridnumber}-GIS")
-        self.move_stage([GIS_Stage_Position['x'], GIS_Stage_Position['y'], GIS_Stage_Position['z'], GIS_Stage_Position['r'], GIS_Stage_Position['t']], mode='absolute')
+        #GIS_Stage_Position = self.read_from_yaml(os.path.join(self.project_root, 'config', 'positions'), rf"grid0{gridnumber}-GIS")
+        #self.move_stage([GIS_Stage_Position['x'], GIS_Stage_Position['y'], GIS_Stage_Position['z'], GIS_Stage_Position['r'], GIS_Stage_Position['t']], mode='absolute')
         gis.gis_protocol = {"time": 10, "hfw": 900.0e-6, "gas": "Pt cryo", "length": None}
         gis.deposit_platinum(self.microscope, gis.gis_protocol)
         print("Gas Injection finished")
@@ -448,6 +451,7 @@ class Gui(QWidget):
 
 if __name__ == "__main__":
     #create a folder for the experiment
+    print('Application started.')
     current_date = datetime.now().strftime("%Y%m%d")
     desktop_path = Path.home() / "Desktop/"
     folder_path = os.path.join(desktop_path, 'TestImages/', current_date)

@@ -56,14 +56,14 @@ class Fibsemcontrol():
                                                 save=True,
                                                 filename='start',
                                                 path=self.folder_path)
-        project_root = Path(__file__).resolve().parent.parent
-        config_file = os.path.join(self.project_root, 'config', 'ConditionScreening')
-        self.imaging_settings.hfw = self.read_from_yaml(config_file, 'hfw')
-        self.imaging_settings.dwell_time = self.read_from_yaml(config_file, 'dwell_time')
-        self.imaging_settings.current = self.read_from_yaml(config_file, 'current')
+        self.imaging_settings.hfw = self.read_from_yaml('hfw')
+        self.imaging_settings.dwell_time = self.read_from_yaml('dwell_time')
+        self.imaging_settings.current = self.read_from_yaml('current')
 
-    def read_from_yaml(self, filename, name):
-        with open(f"{filename}.yaml", 'r') as file:
+    def read_from_yaml(self, name):
+        project_root = Path(__file__).resolve().parent.parent
+        config_file = os.path.join(project_root, 'config', 'ConditionScreening')
+        with open(f"{config_file}.yaml", 'r') as file:
             data = yaml.safe_load(file)
         entry = float(data[name])
         if entry:
@@ -233,8 +233,10 @@ class ParameterWindow(QtWidgets.QWidget):
         voltage_min = self.voltage_min_input.text()
         voltage_max = self.voltage_max_input.text()
         voltage_steps = self.voltage_steps_input.text()
-
-        voltages = np.linspace(float(voltage_min), float(voltage_max), int(voltage_steps)).tolist()
+        if len(voltage_min) != 0 or len(voltage_max) != 0 or len(voltage_steps) != 0:
+            voltages = np.linspace(float(voltage_min), float(voltage_max), int(voltage_steps)).tolist()
+        else:
+            voltages = [float(fibsem.read_from_yaml('voltage'))]
         biases = np.linspace(float(bias_min), float(bias_max), int(bias_steps)).tolist()
         tilts = np.linspace(float(tilt_min), float(tilt_max), int(tilt_steps)).tolist()
         try:

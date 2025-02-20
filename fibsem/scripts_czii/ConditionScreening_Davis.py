@@ -45,8 +45,6 @@ class Fibsemcontrol():
             #
             self.microscope, self.settings = utils.setup_session(manufacturer='Demo', ip_address='localhost',
                                                                   config_path=config_path)
-            print(f"The settings are {self.settings}.")
-            print(f"The microscope is {self.microscope}")
         except Exception as e:
             error_message(f"Connection to microscope failed: {e}")
             sys.exit()
@@ -131,7 +129,6 @@ class Fibsemcontrol():
         print("RESULT---------------------------")
         print(f"The indices leading to the maximum contrast are a voltage of {max_index[0]}, "
               f"a relative stage tilt of {max_index[1]} and a stage_bias of {max_index[2]}.")
-        print(df_contrast_values)
         return df_contrast_values
 
     def create_surface_plots(self, df_contrast_values, voltages, stage_tilts, stage_biases):
@@ -246,6 +243,7 @@ class ParameterWindow(QtWidgets.QWidget):
             fibsem.create_surface_plots(data_frame_screening, voltages, tilts, biases)
         except Exception as e:
             print(f"The screening failed: {e}")
+        self.close()
 
 if __name__ == "__main__":
     #create a folder for the experiment

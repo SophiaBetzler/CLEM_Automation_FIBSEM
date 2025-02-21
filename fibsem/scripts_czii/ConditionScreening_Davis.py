@@ -36,6 +36,9 @@ class Fibsemcontrol():
         """
         self.project_root = Path(__file__).resolve().parent.parent
         self.folder_path = folder_path
+        self.imaging_settings = self.read_from_yaml()
+        self.imaging_settings.path = self.folder_path
+        self.imaging_settings.beam_type = BeamType.ELECTRON
         try:
             #for hydra microscope use:
             config_path = os.path.join(self.project_root, 'config', 'czii-tfs-hydra-configuration.yaml')
@@ -49,31 +52,33 @@ class Fibsemcontrol():
         except Exception as e:
             error_message(f"Connection to microscope failed: {e}")
             sys.exit()
-        self.imaging_settings = structures.ImageSettings(
-                                                autocontrast=False,
-                                                resolution=[1536, 1024],
-                                                beam_type=BeamType.ELECTRON,
-                                                autogamma=False,
-                                                save=True,
-                                                filename='start',
-                                                path=self.folder_path)
-        self.imaging_settings.hfw = self.read_from_yaml('hfw')
-        self.imaging_settings.dwell_time = self.read_from_yaml('dwell_time')
-        self.imaging_settings.current = self.read_from_yaml('current')
 
-
-    def read_from_yaml(self, name):
+    def read_from_yaml(self):
+        """
+        Read data from the yaml file. Return imaging setting object.
+        """
+        def get_all_keys(obj):
+            keys = []
+            if isinstance(obj, dict):
+                for key, value in obj.items():
+                    keys.append(key)
+                    keys.extend(get_all_keys(value))
+            elif isinstance(obj, list):
+                for item in obj:
+                    keys.extend(get_all_keys(item))
+            return keys
         project_root = Path(__file__).resolve().parent.parent
         config_file = os.path.join(project_root, 'config', 'ConditionScreening')
         with open(f"{config_file}.yaml", 'r') as file:
             data = yaml.safe_load(file)
-        entry = float(data[name])
-        if name == 'resolution' :
-            entry =  ast.literal_eval(data[name])
-        else:
-            entry = float(data[name])
-        if entry:
-            return entry
+        parameters = get_all_keys(data)
+        imaging_settings = structures.ImageSettings()
+        for parameter in parameters:
+            if parameter == 'scan_rotation':
+                setattr(imaging_settings, parameter, np.deg2rad(data[parameter]))
+            else:
+                setattr(imaging_settings, parameter, data[parameter])
+        return imaging_settings
 
     def set_starting_conditions(self, brightness, contrast):
         """
@@ -84,6 +89,10 @@ class Fibsemcontrol():
         return: the contrast of the 'initial image' and saves this image as 'Before.tiff'
         """
         calibration.auto_focus_beam(self.microscope, self.settings, beam_type=BeamType.ELECTRON)
+        self.imaging_settings.save=True
+        self.imaging_settings.filename='Before'
+        print(vars(self.imaging_settings))
+        acquire.new_image(self.microscope, self.imaging_settings)
         calibration.auto_charge_neutralisation(n_iterations=10, microscope=self.microscope, image_settings=self.imaging_settings)
         new_detector_settings = FibsemDetectorSettings(
             type='ETD',
@@ -92,7 +101,7 @@ class Fibsemcontrol():
             contrast=contrast
         )
         self.microscope.set_detector_settings(detector_settings=new_detector_settings)
-
+        self.imaging_settings.filename = 'After_Charge_Neutralisation'
         image = acquire.new_image(self.microscope, self.imaging_settings)
         return np.std(image.data)
 
@@ -107,17 +116,21 @@ class Fibsemcontrol():
             names=['voltage', 'stage_tilt', 'stage_bias']
         )
         def measure_contrast(voltage, stage_tilt, stage_bias):
-            self.imaging_settings.voltage = voltage
-            #Thermo = ThermoMicroscope()
-            #Thermo.connection.beams.electron_beam.beam_deceleration.stage_bias.limits
-            #Thermo.connection.beams.electron_beam.beam_deceleration.stage_bias.value = stage_bias
+            """
+            Script acquires images at preset settings and measures the contrast in the image.
+            The contrast measurement is currently done using the standard deviation.
+            """
             stage_movement = FibsemStagePosition(x=float(0.0),
                                                  y=float(0.0),
                                                  z=float(0.0),
                                                  r=np.deg2rad(0.0),
                                                  t=np.deg2rad(stage_tilt))
-            self.imaging_settings.save=False
+            # Thermo = ThermoMicroscope()
+            # Thermo.connection.beams.electron_beam.beam_deceleration.stage_bias.limits
+            # Thermo.connection.beams.electron_beam.beam_deceleration.stage_bias.value = stage_bias
+            self.imaging_settings.voltage = voltage
             self.microscope.move_stage_relative(stage_movement)
+            self.imaging_settings.save=False
             image = acquire.new_image(self.microscope, self.imaging_settings)
             return np.std(image.data)
 
@@ -135,6 +148,17 @@ class Fibsemcontrol():
         print("RESULT---------------------------")
         print(f"The indices leading to the maximum contrast are a voltage of {max_index[0]}, "
               f"a relative stage tilt of {max_index[1]} and a stage_bias of {max_index[2]}.")
+        self.imaging_settings.save=True
+        self.imaging_settings.filename='Highest_Contrast'
+        self.imaging_settings.voltage=max_index[0]
+        stage_movement = FibsemStagePosition(x=float(0.0),
+                                             y=float(0.0),
+                                             z=float(0.0),
+                                             r=np.deg2rad(0.0),
+                                             t=np.deg2rad(max_index[1]))
+        self.microscope.move_stage_relative(stage_movement)
+        #Thermo.connection.beams.electron_beam.beam_deceleration.stage_bias.value = max_index[2]
+        acquire.new_image(self.microscope, self.imaging_settings)
         return df_contrast_values
 
     def create_surface_plots(self, df_contrast_values, voltages):
@@ -166,6 +190,8 @@ class ParameterWindow(QtWidgets.QWidget):
         super().__init__()
         self.initUI()
         self.fibsem = fibsemcontrol
+        self.imaging_settings = fibsemcontrol.imaging_settings
+        print(self.imaging_settings.voltage)
 
     def initUI(self):
         # Main layout for the window
@@ -242,15 +268,15 @@ class ParameterWindow(QtWidgets.QWidget):
         if len(voltage_min) != 0 or len(voltage_max) != 0 or len(voltage_steps) != 0:
             voltages = np.linspace(float(voltage_min), float(voltage_max), int(voltage_steps)).tolist()
         else:
-            voltages = [float(fibsem.read_from_yaml('voltage'))]
+            voltages = [self.imaging_settings.voltage]
         biases = np.linspace(float(bias_min), float(bias_max), int(bias_steps)).tolist()
         tilts = np.linspace(float(tilt_min), float(tilt_max), int(tilt_steps)).tolist()
-        try:
-            fibsem.set_starting_conditions(brightness=float(brightness), contrast=float(contrast))
-            data_frame_screening = fibsem.screen_conditions(voltages, tilts, biases)
-            fibsem.create_surface_plots(data_frame_screening, voltages)
-        except Exception as e:
-            print(f"The screening failed: {e}")
+        #try:
+        fibsem.set_starting_conditions(brightness=float(brightness), contrast=float(contrast))
+        data_frame_screening = fibsem.screen_conditions(voltages, tilts, biases)
+        fibsem.create_surface_plots(data_frame_screening, voltages)
+        # except Exception as e:
+        #     print(f"The screening failed: {e}")
         self.close()
 
 if __name__ == "__main__":

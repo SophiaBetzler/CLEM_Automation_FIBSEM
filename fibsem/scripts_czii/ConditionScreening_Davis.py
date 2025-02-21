@@ -11,6 +11,7 @@ import yaml
 import pandas as pd
 import sys
 from PyQt5 import QtWidgets
+import ast
 
 def error_message(text):
     messagebox.showerror("Error", text)
@@ -60,12 +61,17 @@ class Fibsemcontrol():
         self.imaging_settings.dwell_time = self.read_from_yaml('dwell_time')
         self.imaging_settings.current = self.read_from_yaml('current')
 
+
     def read_from_yaml(self, name):
         project_root = Path(__file__).resolve().parent.parent
         config_file = os.path.join(project_root, 'config', 'ConditionScreening')
         with open(f"{config_file}.yaml", 'r') as file:
             data = yaml.safe_load(file)
         entry = float(data[name])
+        if name == 'resolution' :
+            entry =  ast.literal_eval(data[name])
+        else:
+            entry = float(data[name])
         if entry:
             return entry
 
@@ -131,27 +137,27 @@ class Fibsemcontrol():
               f"a relative stage tilt of {max_index[1]} and a stage_bias of {max_index[2]}.")
         return df_contrast_values
 
-    def create_surface_plots(self, df_contrast_values, voltages, stage_tilts, stage_biases):
-        for bias in stage_biases:
-            df_subset = df_contrast_values.xs(bias, level='stage_bias')
+    def create_surface_plots(self, df_contrast_values, voltages):
+        for voltage in voltages:
+            df_subset = df_contrast_values.xs(voltage, level='voltage')
             df_reset = df_subset.reset_index()
 
             # Pivot the table so that:
             # - Rows are stage_tilt values,
             # - Columns are voltage values,
             # - Values are contrast.
-            df_pivot = df_reset.pivot(index='stage_tilt', columns='voltage', values='contrast')
-            voltage_vals = df_pivot.columns.values
+            df_pivot = df_reset.pivot(index='stage_tilt', columns='stage_bias', values='contrast')
+            biases_vals = df_pivot.columns.values
             stage_tilt_vals = df_pivot.index.values
-            X, Y = np.meshgrid(voltage_vals, stage_tilt_vals)
+            X, Y = np.meshgrid(biases_vals, stage_tilt_vals)
             Z = df_pivot.values
             fig = plt.figure(figsize=(8, 6))
             ax = fig.add_subplot(111, projection='3d')
             surf = ax.plot_surface(X, Y, Z, cmap='viridis', edgecolor='none')
-            ax.set_xlabel('Voltage')
+            ax.set_xlabel('Bias')
             ax.set_ylabel('Stage Tilt')
             ax.set_zlabel('Contrast')
-            ax.set_title(f'Surface Plot at stage_bias = {bias}')
+            ax.set_title(f'Surface Plot at voltage = {voltage}')
             fig.colorbar(surf, shrink=0.5, aspect=5)
             plt.show()
 
@@ -242,7 +248,7 @@ class ParameterWindow(QtWidgets.QWidget):
         try:
             fibsem.set_starting_conditions(brightness=float(brightness), contrast=float(contrast))
             data_frame_screening = fibsem.screen_conditions(voltages, tilts, biases)
-            fibsem.create_surface_plots(data_frame_screening, voltages, tilts, biases)
+            fibsem.create_surface_plots(data_frame_screening, voltages)
         except Exception as e:
             print(f"The screening failed: {e}")
         self.close()
@@ -260,7 +266,4 @@ if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)
     fibsem = Fibsemcontrol(folder_path)
     gui = ParameterWindow(fibsem)
-    fibsem.set_starting_conditions(brightness=0.7, contrast=0.7)
-    df_contrast_values = fibsem.screen_conditions(voltages=[1500, 1750, 2000, 2250, 2500], stage_tilts=[-1, -0.5, 0.0, +0.5, +1.0], stage_biases=[0.5, 1.0, 1.5])
-
     sys.exit(app.exec())

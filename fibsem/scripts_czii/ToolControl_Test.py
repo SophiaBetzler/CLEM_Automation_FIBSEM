@@ -1,5 +1,5 @@
 from fibsem import acquire, utils, microscope, structures, milling, calibration, gis
-from fibsem.structures import BeamType, FibsemStagePosition
+from fibsem.structures import BeamType, FibsemStagePosition, FibsemDetectorSettings
 from tkinter import messagebox
 from PyQt5.QtWidgets import QApplication, QWidget, QLineEdit, QPushButton, QHBoxLayout, QVBoxLayout, QLabel
 import matplotlib.pyplot as plt
@@ -150,8 +150,9 @@ class Fibsemcontrol():
         entry = next((item for item in data if item['name'] == name), None)
         if entry:
             return entry
+
     def auto_focus_image(self):
-        calibration.auto_focus_beam(self.microscope, beam_type=BeamType.ELECTRON)
+        calibration.auto_focus_beam(self.microscope, self.settings, beam_type=BeamType.ELECTRON)
 
     def acquire_image(self, key):
         '''
@@ -162,6 +163,16 @@ class Fibsemcontrol():
         Data are saved to the hard drive.
         '''
 
+        new_detector_settings = FibsemDetectorSettings(
+            type='ETD',
+            mode='SecondaryElectrons',
+            brightness=0.8,
+            contrast=0.7
+        )
+
+        self.microscope.set_detector_settings(detector_settings=new_detector_settings)
+        print(self.microscope.get_microscope_state())
+
         dict_beamtypes = {
                 'electron': BeamType.ELECTRON,
                 'ion': BeamType.ION,
@@ -170,6 +181,7 @@ class Fibsemcontrol():
                 'tiles': BeamType.ELECTRON,
                 #'fl': BeamType.FL
                         }
+
         self.settings.image.path = self.folder_path
         plt.ion()  # needed to avoid the QCoreApplication::exec: The event loop is already running error
         filename_milling = rf"milling_base.txt"
@@ -234,9 +246,8 @@ class Fibsemcontrol():
             image_settings.resolution = [1024, 1024]
             image_settings.beam_type = BeamType.ELECTRON
             image_settings.save = True
-            image_settings.path = os.path.join(os.getcwd(), "demo", "tile")
-            os.makedirs(image_settings.path, exist_ok=True)
-
+            image_settings.path = self.folder_path
+            image_settings.filename='Tiles'
             # tile settings
             dx, dy = image_settings.hfw, image_settings.hfw
             nrows, ncols = 3, 3
@@ -321,6 +332,12 @@ class Fibsemcontrol():
                     self.microscope.move_stage_relative(stage_movement)
                  elif mode == 'absolute':
                      self.microscope.move_stage_absolute(stage_movement)
+                 elif mode == 'stable_ebeam':
+                     self.microscope.stable_move(stage_movement.x, stage_movement.y, beam_type=BeamType.ELECTRON)
+                 elif mode == 'stable_ion':
+                     self.microscope.stable_move(stage_movement.x, stage_movement.y, beam_type=BeamType.ION)
+                 elif mode == 'safe':
+                     self.microscope.safe_absolute_stage_movement(stage_movement)
                  else:
                         return
             except Exception as e:
@@ -395,9 +412,9 @@ class Gui(QWidget):
         acquire_button_layout.addWidget(self.button_fl)
 
         # Create a horizontal layout of input boxes for stage movement
-        relative_input_box_layout = QHBoxLayout()
+        move_input_box_layout = QHBoxLayout()
         column_descriptors = ["X (mm)", "Y (mm)", "Z (mm)", "Rotation (deg)", "Tilt (deg)"]
-        self.relative_move_inputs = []
+        self.move_inputs = []
         for desc in column_descriptors:
             column_layout = QVBoxLayout()
             label = QLabel(desc, self)
@@ -406,11 +423,9 @@ class Gui(QWidget):
             input_box = QLineEdit(self)
             input_box.setPlaceholderText("Enter value")
             column_layout.addWidget(input_box)
-            relative_input_box_layout.addLayout(column_layout)
-            self.relative_move_inputs.append(input_box)
-        relative_move_button = QPushButton("Relative", self)
-        relative_move_button.clicked.connect(self.relative_stage_movement)
-        relative_input_box_layout.addWidget(relative_move_button)
+            move_input_box_layout.addLayout(column_layout)
+            self.move_inputs.append(input_box)
+
         absolute_input_box_layout = QHBoxLayout()
         self.absolute_move_inputs = []
         for _ in range(5):
@@ -419,11 +434,26 @@ class Gui(QWidget):
             absolute_input_box_layout.addWidget(input_box)
             self.absolute_move_inputs.append(input_box)
 
+        acquire_button_layout.addLayout(move_input_box_layout)
+
+
+        move_button_layout = QHBoxLayout()
+        relative_move_button = QPushButton("Relative", self)
+        relative_move_button.clicked.connect(self.relative_stage_movement)
+        move_button_layout.addWidget(relative_move_button)
         absolute_move_button = QPushButton("Absolute", self)
         absolute_move_button.clicked.connect(self.absolute_stage_movement)
-        absolute_input_box_layout.addWidget(absolute_move_button)
-        acquire_button_layout.addLayout(relative_input_box_layout)
-        acquire_button_layout.addLayout(absolute_input_box_layout)
+        move_button_layout.addWidget(absolute_move_button)
+        stable_ebeam_move_button = QPushButton("Stable Ebeam", self)
+        stable_ebeam_move_button.clicked.connect(self.stable_stage_movement_ebeam)
+        move_button_layout.addWidget(stable_ebeam_move_button)
+        stable_ion_move_button = QPushButton("Stable Ion", self)
+        stable_ion_move_button.clicked.connect(self.stable_stage_movement_ion)
+        move_button_layout.addWidget(stable_ion_move_button)
+        safe_move_button = QPushButton("Safe", self)
+        safe_move_button.clicked.connect(self.safe_stage_movement)
+        move_button_layout.addWidget(safe_move_button)
+        acquire_button_layout.addLayout(move_button_layout)
 
         milling_layout = QHBoxLayout()
         fiducial_button = QPushButton("Fiducial", self)
@@ -441,13 +471,27 @@ class Gui(QWidget):
 
     def relative_stage_movement(self):
         # Collect the settings for the relative stage movement
-        values = [input_box.text() for input_box in self.relative_move_inputs]
+        values = [input_box.text() for input_box in self.move_inputs]
         fibsem.move_stage(values, 'relative')
 
     def absolute_stage_movement(self):
         # Collect data from the second row
-        values = [input_box.text() for input_box in self.absolute_move_inputs]
+        values = [input_box.text() for input_box in self.move_inputs]
         fibsem.move_stage(values, 'absolute')
+
+    def stable_stage_movement_ebeam(self):
+        values = [input_box.text() for input_box in self.move_inputs]
+        fibsem.move_stage(values, 'stable_ebeam')
+
+    def stable_stage_movement_ion(self):
+        values = [input_box.text() for input_box in self.move_inputs]
+        fibsem.move_stage(values, 'stable_ion')
+
+    def safe_stage_movement(self):
+        values = [input_box.text() for input_box in self.move_inputs]
+        fibsem.move_stage(values, 'safe')
+
+
 
 if __name__ == "__main__":
     #create a folder for the experiment

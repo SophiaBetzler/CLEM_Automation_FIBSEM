@@ -288,7 +288,12 @@ class Fibsemcontrol():
 
     def get_stage_position(self):
         current_stage_position = self.microscope.get_stage_position()
-        print(f"The current stage position is {current_stage_position}.")
+        current_stage_position_adjusted_unitis = [current_stage_position.x*1e3,
+                                                  current_stage_position.y*1e3,
+                                                  current_stage_position.z*1e3,
+                                                  np.rad2deg(current_stage_position.r),
+                                                  np.rad2deg(current_stage_position.t)]
+        print(f"The current stage position is {current_stage_position_adjusted_unitis}.")
         return current_stage_position
 
     def move_stage(self, new_stage_position=None, mode=None, preset_stage_position=None):

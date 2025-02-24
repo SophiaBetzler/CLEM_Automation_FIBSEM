@@ -12,6 +12,7 @@ from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import tifffile as tff
+from torch.backends.cudnn import enabled
 
 import fibsem
 from fibsem.config import METADATA_VERSION, SUPPORTED_COORDINATE_SYSTEMS
@@ -716,7 +717,7 @@ class BeamSettings:
         return state_dict
 
     @staticmethod
-    def from_dict(state_dict: dict) -> "BeamSettings":
+    def from_dict(state_dict: dict, beam_type: Optional[BeamType]=None) -> "BeamSettings":
         if "stigmation" in state_dict and state_dict["stigmation"] is not None:
             stigmation = Point.from_dict(state_dict["stigmation"])
         else:
@@ -730,7 +731,7 @@ class BeamSettings:
         current = state_dict.get("beam_current", state_dict.get("current", None))
 
         beam_settings = BeamSettings(
-            beam_type=BeamType[state_dict["beam_type"].upper()],
+            beam_type=beam_type if beam_type is not None else BeamType[state_dict.get("beam_type", "ELECTRON").upper()],
             working_distance=wd,
             beam_current=current,
             voltage=state_dict["voltage"],
@@ -1131,7 +1132,7 @@ class FibsemMillingSettings:
         assert isinstance(
             self.spacing, (float, int)
         ), f"invalid type for value for spacing, must be int or float, currently {type(self.spacing)}"
-        # assert isinstance(self.preset,(str)), f"invalid type for value for preset, must be str, currently {type(self.preset)}"
+
 
     def to_dict(self) -> dict:
         settings_dict = {

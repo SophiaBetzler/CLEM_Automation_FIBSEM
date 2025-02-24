@@ -365,7 +365,7 @@ class Fibsemcontrol():
 
         milling_settings = structures.FibsemMillingSettings(
             milling_current=1e-9,
-            milling_voltage=30e3,
+            milling_voltage=12e3,
             hfw=80e-6,
             application_file="Si",
             patterning_mode="Serial",

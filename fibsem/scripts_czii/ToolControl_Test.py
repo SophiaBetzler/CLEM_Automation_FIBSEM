@@ -242,7 +242,7 @@ class Fibsemcontrol():
         elif key == 'tiles':
             self.microscope.move_flat_to_beam(BeamType.ELECTRON)
             image_settings = self.settings.image
-            image_settings.hfw = 80e-6
+            image_settings.hfw = 600e-6
             image_settings.resolution = [1024, 1024]
             image_settings.beam_type = BeamType.ELECTRON
             image_settings.save = True
@@ -273,7 +273,7 @@ class Fibsemcontrol():
             fig, axes = plt.subplots(nrows, ncols, figsize=(10, 10))
             for i, fname in enumerate(filenames):
                 image = structures.FibsemImage.load(fname)
-                ax = axes[i // ncols][i % ncols]
+                ax = axes[-(i // ncols +1)][i % ncols]
                 ax.imshow(image.data, cmap="gray")
                 ax.axis("off")
 
@@ -353,31 +353,69 @@ class Fibsemcontrol():
         """
         Creates a fiducial based on the settings stored in the milling_base.txt file
         """
-        filename_milling = 'milling_base.txt'
-        pattern_1 = milling.patterning.patterns2.FiducialPattern.from_dict(self.read_from_dict(filename_milling))
-        self.microscope.set("plasma_gas", self.read_from_dict(filename_milling)['plasma_source'],
-                            beam_type=BeamType.ION)
-        self.microscope.set("plasma", self.read_from_dict(filename_milling)['plasma'], beam_type=BeamType.ION)
-        milling_settings = structures.FibsemMillingSettings.from_dict(self.read_from_dict(filename_milling))
-        milling_alignment = milling.MillingAlignment(enabled=False)
-        milling_stages = milling.FibsemMillingStage(
-            name="Fiducial",
-            milling = milling_settings,
-            pattern = pattern_1,
-            alignment = milling_alignment,
+        rect_settings = structures.FibsemRectangleSettings(width=10e-6, height=10e-6, depth=1e-6, centre_x=0, centre_y=0)
+
+        rectangle_pattern = milling.patterning.patterns2.RectanglePattern(
+            width=10e-6,
+            height=10e-6,
+            depth=1e-6,
+            point=structures.Point(0, 0),
         )
-        milling.setup_milling(self.microscope, milling_stages)
-        print(f"The milling time is {self.microscope.estimate_milling_time()}")
-        milling.run_milling(self.microscope, milling_current=milling_stages.milling.milling_current, milling_voltage=milling_stages.milling.milling_voltage)
-        print(f"Running the milling finished.")
+
+
+        milling_settings = structures.FibsemMillingSettings(
+            milling_current=1e-9,
+            milling_voltage=30e3,
+            hfw=80e-6,
+            application_file="Si",
+            patterning_mode="Serial",
+        )
+
+        milling_alignment = milling.MillingAlignment(
+            enabled=False,
+        )
+
+        milling_stage = milling.FibsemMillingStage(
+            name="Milling Stage",
+            milling=milling_settings,
+            pattern=rectangle_pattern,
+            alignment=milling_alignment,
+        )
+
+        milling.draw_patterns(self.microscope, milling_stage.pattern.define())
+
+        # 3. run milling
+        milling.run_milling(self.microscope, milling_stage.milling.milling_current, milling_stage.milling.milling_voltage)
+
+        # 4. finish milling (restore imaging beam settings, clear shapes, ...)
         milling.finish_milling(self.microscope)
-        print('Milling finished.')
+
+
+        #filename_milling = 'milling_base.txt'
+        #pattern_1 = milling.patterning.patterns2.FiducialPattern.from_dict(self.read_from_dict(filename_milling))
+        # self.microscope.set("plasma_gas", self.read_from_dict(filename_milling)['plasma_source'],
+        #                     beam_type=BeamType.ION)
+        # self.microscope.set("plasma", self.read_from_dict(filename_milling)['plasma'], beam_type=BeamType.ION)
+        # milling_settings = structures.FibsemMillingSettings.from_dict(self.read_from_dict(filename_milling))
+        # milling_alignment = milling.MillingAlignment(enabled=False)
+        # milling_stages = milling.FibsemMillingStage(
+        #     name="Fiducial",
+        #     milling = milling_settings,
+        #     pattern = pattern_1,
+        #     alignment = milling_alignment,
+        # )
+        # milling.setup_milling(self.microscope, milling_stages)
+        # print(f"The milling time is {self.microscope.estimate_milling_time()}")
+        # milling.run_milling(self.microscope, milling_current=milling_stages.milling.milling_current, milling_voltage=milling_stages.milling.milling_voltage)
+        # print(f"Running the milling finished.")
+        # milling.finish_milling(self.microscope)
+        # print('Milling finished.')
 
     def GIS_Coating(self, gridnumber):
         #GIS_Stage_Position = self.read_from_yaml(os.path.join(self.project_root, 'config', 'positions'), rf"grid0{gridnumber}-GIS")
         #self.move_stage([GIS_Stage_Position['x'], GIS_Stage_Position['y'], GIS_Stage_Position['z'], GIS_Stage_Position['r'], GIS_Stage_Position['t']], mode='absolute')
-        gis.gis_protocol = {"time": 10, "hfw": 900.0e-6, "gas": "Pt cryo", "length": None}
-        gis.deposit_platinum(self.microscope, gis.gis_protocol)
+        #gis.gis_protocol = {"time": 10, "hfw": 900.0e-6, "gas": "Pt cryo", "length": None}
+        #gis.deposit_platinum(self.microscope, gis.gis_protocol)
         print("Gas Injection finished")
 
 class Gui(QWidget):

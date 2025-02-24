@@ -353,7 +353,7 @@ class Fibsemcontrol():
         """
         Creates a fiducial based on the settings stored in the milling_base.txt file
         """
-        rect_settings = structures.FibsemRectangleSettings(width=10e-6, height=10e-6, depth=1e-6, centre_x=0, centre_y=0)
+        #rect_settings = structures.FibsemRectangleSettings(width=10e-6, height=10e-6, depth=1e-6, centre_x=0, centre_y=0)
 
         rectangle_pattern = milling.patterning.patterns2.RectanglePattern(
             width=10e-6,

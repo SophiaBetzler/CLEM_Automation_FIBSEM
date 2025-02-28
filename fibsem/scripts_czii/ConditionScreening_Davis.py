@@ -115,6 +115,7 @@ class Fibsemcontrol():
             [voltages, stage_tilts, stage_biases],
             names=['voltage', 'stage_tilt', 'stage_bias']
         )
+
         def measure_contrast(voltage, stage_tilt, stage_bias):
             """
             Script acquires images at preset settings and measures the contrast in the image.
@@ -271,6 +272,8 @@ class ParameterWindow(QtWidgets.QWidget):
             voltages = [self.imaging_settings.voltage]
         biases = np.linspace(float(bias_min), float(bias_max), int(bias_steps)).tolist()
         tilts = np.linspace(float(tilt_min), float(tilt_max), int(tilt_steps)).tolist()
+
+        ###### HERE YOU STILL NEED TO MAKE SURE THAT THE TILTS ARE CORRECT!
         #try:
         fibsem.set_starting_conditions(brightness=float(brightness), contrast=float(contrast))
         data_frame_screening = fibsem.screen_conditions(voltages, tilts, biases)

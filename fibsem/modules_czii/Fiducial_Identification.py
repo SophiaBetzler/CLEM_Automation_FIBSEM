@@ -39,8 +39,8 @@ class FiducialID:
         """
         self.data_generation(hfw=300e-6)
         self.bf.execute_external_script(script='Identify_Fiducial_Remote.py',
-                                                               dir_name='Ultralytics',
-                                                               parameter=self.number_fiducials)
+                                        dir_name='Ultralytics',
+                                        parameter=self.number_fiducials)
 
         while not os.path.exists(os.path.join(self.temp_folder_path, 'stage_move.json')):
             time.sleep(1)
@@ -61,8 +61,8 @@ class FiducialID:
             hfw_2 = 300e-6
         self.data_generation(hfw=hfw_2)
         self.bf.execute_external_script('Identify_Fiducial_Remote.py',
-                                                               'Ultralytics',
-                                                                parameter=self.number_fiducials)
+                                        'Ultralytics',
+                                        parameter=self.number_fiducials)
 
         while not os.path.exists(os.path.join(self.temp_folder_path, 'stage_move.json')):
             time.sleep(1)

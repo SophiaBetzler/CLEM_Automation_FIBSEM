@@ -15,11 +15,11 @@ fib_microscope, fib_settings = bf.connect_to_microscope()
 #                     'hfw': [300, 400, 500, 600],
 #                     'current': [1e-9, 1e-10, 1e-11]
 # }
-# fiducials = FiducialID(number_fiducials=2,
-#                        fib_microscope=fib_microscope,
-#                        beam='ion',
-#                        fib_settings=fib_settings)
-# fiducials.fiducial_identification()
+fiducials = FiducialID(number_fiducials=2,
+                        fib_microscope=fib_microscope,
+                        beam='ion',
+                       fib_settings=fib_settings)
+fiducials.fiducial_identification()
 
 
 ms = MillingSetup()

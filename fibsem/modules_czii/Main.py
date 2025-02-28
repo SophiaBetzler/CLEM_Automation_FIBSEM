@@ -16,6 +16,7 @@ fib_microscope, fib_settings = bf.connect_to_microscope()
 #                     'current': [1e-9, 1e-10, 1e-11]
 # }
 fiducials = FiducialID(number_fiducials=2,
+                       pc_type='mac',
                         fib_microscope=fib_microscope,
                         beam='ion',
                        fib_settings=fib_settings)

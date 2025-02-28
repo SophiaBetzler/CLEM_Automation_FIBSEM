@@ -15,15 +15,17 @@ class FiducialID:
     fib_microscope: the fib_microscope object created in the Basic_Functions class
     beam: either 'ion' or 'electron'
     """
-    def __init__(self, number_fiducials, fib_microscope, fib_settings, beam='electron'):
+    def __init__(self, pc_type, number_fiducials, fib_microscope, fib_settings, beam='electron'):
         self.number_fiducials = number_fiducials
         self.fib_microscope = fib_microscope
+        self.pc_type = pc_type
         self.beam = beam
         self.beam_type = getattr(structures.BeamType, self.beam.upper())
-        self.bf = BasicFunctions()
+        self.bf = BasicFunctions(pc_type=self.pc_type)
         self.folder_path = self.bf.folder_path
         self.temp_folder_path = self.bf.temp_folder_path
         self.fib_settings = fib_settings
+
 
     def data_generation(self, hfw):
         """

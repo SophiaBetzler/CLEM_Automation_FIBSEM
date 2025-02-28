@@ -37,13 +37,14 @@ class BasicFunctions:
     """
     temp_folder_path, folder_path = create_temp_folder()
 
-    def __init__(self, manufacturer='Demo', ip='localhost', tool='Hydra'):
+    def __init__(self, pc_type='windows', manufacturer='Demo', ip='localhost', tool='Hydra'):
         create_temp_folder()
         self.project_root = Path(__file__).resolve().parent.parent
         self.python_root = Path(__file__).resolve().parent.parent.parent.parent
         self.manufacturer = manufacturer
         self.ip = ip
         self.tool = tool
+        self.pc_type = pc_type
 
     def execute_external_script(self, script, dir_name, parameter=None):
         """
@@ -51,7 +52,10 @@ class BasicFunctions:
         script: script name as str
         dir_name: dir_name as str
         """
-        python_path = os.path.join(self.python_root, dir_name, 'venv/bin/python')
+        if self.pc_type == 'mac':
+            python_path = os.path.join(self.python_root, dir_name, 'venv/bin/python')
+        elif self.pc_type == 'windows':
+            python_path = os.path.join(self.python_root, dir_name, 'venv\Scripts\python')
         venv_path = os.path.join(self.python_root, dir_name)
         script_path = os.path.join(venv_path, script)
         if parameter is not None:

@@ -70,6 +70,9 @@ class Imaging:
             for value in values:
                 imaging_settings.key = value
                 if key == 'hfw':
+                    imaging_settings.hfw = value
+                elif key == 'current':
+                    imaging_settings.current = value
                     value = value*1e6
                 imaging_settings.filename = f"{filename}_{key}_{value}"
                 acquire.new_image(self.fib_microscope, imaging_settings)

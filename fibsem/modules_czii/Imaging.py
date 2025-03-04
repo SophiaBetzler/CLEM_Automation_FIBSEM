@@ -69,6 +69,8 @@ class Imaging:
         for key, values in dict_parameters.items():
             for value in values:
                 imaging_settings.key = value
+                if key == 'hfw':
+                    value = value*1e6
                 imaging_settings.filename = f"{filename}_{key}_{value}"
                 acquire.new_image(self.fib_microscope, imaging_settings)
 

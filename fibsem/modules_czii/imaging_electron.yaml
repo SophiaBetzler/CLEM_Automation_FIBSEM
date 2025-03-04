@@ -1,12 +1,8 @@
 #beam settings
 beam_current: 25.0e-12
 voltage: 2000.0
-scan_rotation: 180.0
 working_distance: 4.0e-3
-#stigmationX: 0
-#stigmationY: 0
-#shiftX: 0
-#shiftY: 0
+scan_rotation: 180
 
 #imaging settings
 dwell_time: 1.0e-6

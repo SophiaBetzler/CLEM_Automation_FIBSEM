@@ -1,10 +1,9 @@
 #beam settings
 plasma: True
 plasma_source: Xenon
-beam_current: 25.0e-12
-voltage: 2000.0
-working_distance: 16.5.0e-3
-scan_rotation: 180
+beam_current: 10.0e-12
+voltage: 30000.0
+working_distance: 16.50e-3
 
 #imaging settings
 dwell_time: 1.0e-6

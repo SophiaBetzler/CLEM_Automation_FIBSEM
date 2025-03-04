@@ -64,6 +64,7 @@ class Imaging:
         The keys of the dictionary must match attributes of the structures.ImageSettings class.
         """
         imaging_settings = self.imaging_settings
+        beam_settings = self.beam_settings
         imaging_settings.save = True
         filename = self.imaging_settings.filename
         for key, values in dict_parameters.items():
@@ -71,9 +72,10 @@ class Imaging:
                 imaging_settings.key = value
                 if key == 'hfw':
                     imaging_settings.hfw = value
+                    value = value * 1e6
                 elif key == 'current':
-                    imaging_settings.current = value
-                    value = value*1e6
+                    beam_settings.beam_current = value
+                    value = value * 1e12
                 imaging_settings.filename = f"{filename}_{key}_{value}"
                 acquire.new_image(self.fib_microscope, imaging_settings)
 

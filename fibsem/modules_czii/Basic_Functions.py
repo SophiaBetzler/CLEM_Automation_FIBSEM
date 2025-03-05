@@ -98,6 +98,15 @@ class BasicFunctions:
         """
         with open(os.path.join(self.project_root, 'modules_czii', filename + '.yaml')) as file:
             dictionary = yaml.safe_load(file)
+        # if 'reduced_area' in dictionary or dictionary['reduced_area'] is not None:
+        #     dictionary['reduced_area'] = {
+        #                                     "left": dictionary['reduced_area'][0],
+        #                                     "top": dictionary['reduced_area'][1],
+        #                                     "width": dictionary['reduced_area'][2],
+        #                                     "height": dictionary['reduced_area'][3],
+        #                                 }
+
+
         return dictionary
 
     def read_from_dict(self, filename):

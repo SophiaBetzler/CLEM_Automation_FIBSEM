@@ -118,3 +118,12 @@ class Imaging:
         plt.subplots_adjust(hspace=0.001, wspace=0.001)
         plt.savefig(os.path.join(imaging_settings.path, "tiles.png"), dpi=300)
         plt.show()
+
+    def fast_acquire(self, number_frames):
+        self.imaging_settings.save = True
+        for i in range(number_frames):
+            acquisition_time = datetime.now().strftime("%H-%M-%MS")
+            image = acquire.acquire_image(self.fib_microscope, self.imaging_settings)
+            print(acquisition_time)
+            print(np.shape(image.data))
+            print(image.data)

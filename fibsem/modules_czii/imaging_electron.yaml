@@ -2,6 +2,7 @@
 beam_current: 25.0e-12
 voltage: 2000.0
 working_distance: 4.0e-3
+scan_rotation: 3.14159265359
 
 #imaging settings
 dwell_time: 1.0e-6
@@ -12,6 +13,6 @@ autogamma: False
 drift_correction: False
 frame_integration: 1
 line_integration: 1
-#reduced_area: None
+reduced_area: {'left': 0.1, 'top': 0.3, 'width': 0.1, 'height': 0.1 }
 save: True
 

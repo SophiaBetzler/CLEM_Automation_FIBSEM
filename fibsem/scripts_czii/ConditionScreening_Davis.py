@@ -36,10 +36,11 @@ class Fibsemcontrol():
         """
         self.project_root = Path(__file__).resolve().parent.parent
         self.folder_path = folder_path
-        self.imaging_settings, dictionary = self.read_from_yaml()
+        self.imaging_settings, self.dictionary = self.read_from_yaml()
         self.imaging_settings.path = self.folder_path
         self.imaging_settings.beam_type = BeamType.ELECTRON
-        self.beam_settings = structures.BeamSettings.from_dict(dictionary)
+        self.beam_settings = structures.BeamSettings.from_dict(self.dictionary)
+        print(self.beam_settings)
 
         try:
             #for hydra microscope use:
@@ -130,7 +131,8 @@ class Fibsemcontrol():
             self.beam_settings.voltage = voltage
             self.microscope.set_beam_settings(self.beam_settings)
             self.microscope.move_stage_relative(stage_movement)
-            self.imaging_settings.save=False
+            self.imaging_settings.save=True
+            self.imaging_settings.filename=f"voltage-{voltage}-stage_tilt-{tilt}-stage_bias-{stage_bias}"
             image = acquire.new_image(self.microscope, self.imaging_settings)
             return np.std(image.data)
 
@@ -268,7 +270,7 @@ class ParameterWindow(QtWidgets.QWidget):
         if len(voltage_min) != 0 or len(voltage_max) != 0 or len(voltage_steps) != 0:
             voltages = np.linspace(float(voltage_min), float(voltage_max), int(voltage_steps)).tolist()
         else:
-            voltages = [self.imaging_settings.voltage]
+            voltages = [self.fibsem.beam_settings.voltage]
         biases = np.linspace(float(bias_min), float(bias_max), int(bias_steps)).tolist()
         tilts = np.linspace(float(tilt_min), float(tilt_max), int(tilt_steps)).tolist()
 

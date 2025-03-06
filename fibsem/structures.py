@@ -12,6 +12,8 @@ from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import tifffile as tff
+import logging
+
 from torch.backends.cudnn import enabled
 
 import fibsem
@@ -435,7 +437,7 @@ class FibsemRectangle:
         if settings is None:
             return None
         points = ["left", "top", "width", "height"]
-
+        logging.debug('Successfully entered the function.')
         for point in points:
             value = settings[point]
 
@@ -467,6 +469,7 @@ class FibsemRectangle:
 
     @property
     def is_valid_reduced_area(self) -> bool:
+        logging.debug(f"The reduced area is valid? {_is_valid_reduced_area(self)}")
         return _is_valid_reduced_area(self)
 
 def _is_valid_reduced_area(reduced_area: FibsemRectangle) -> bool:
@@ -475,6 +478,7 @@ def _is_valid_reduced_area(reduced_area: FibsemRectangle) -> bool:
     Must not exceed the boundaries of the image 0 - 1
     """
     # if left or top is less than 0, or width or height is greater than 1, return False
+    logging.debug(f"print the value for left {reduced_area.left}")
     if reduced_area.left < 0 or reduced_area.top < 0 or reduced_area.width > 1 or reduced_area.height > 1:
         return False
     if reduced_area.left + reduced_area.width > 1 or reduced_area.top + reduced_area.height > 1:
@@ -555,13 +559,16 @@ class ImageSettings:
         assert (
             isinstance(self.reduced_area, FibsemRectangle) or self.reduced_area is None
         ), f"reduced area must be a fibsemRectangle object, currently is {type(self.reduced_area)}"
+        logging.debug(f"The reduced area is none, but why {self.reduced_area}")
 
     @staticmethod
     def from_dict(settings: dict) -> "ImageSettings":
+        logging.debug(f"The settings are {settings}")
         if "reduced_area" in settings and settings["reduced_area"] is not None:
             reduced_area = FibsemRectangle.from_dict(settings["reduced_area"])
         else:
             reduced_area = None
+            logging.debug(f"The reduced area is not found.")
 
         image_settings = ImageSettings(
             resolution=settings.get("resolution", (1536, 1024)),

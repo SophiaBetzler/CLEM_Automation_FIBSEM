@@ -127,21 +127,24 @@ class Fibsemcontrol():
                                                  r=np.deg2rad(0.0),
                                                  t=np.deg2rad(stage_tilt))
             # Thermo = ThermoMicroscope()
-            # Thermo.connection.beams.electron_beam.beam_deceleration.stage_bias.limits
+            # limits = Thermo.connection.beams.electron_beam.beam_deceleration.stage_bias.limits
+            # print(f"The limits for the stage bias are: {limits}")
             # Thermo.connection.beams.electron_beam.beam_deceleration.stage_bias.value = stage_bias
             self.imaging_settings.voltage = voltage
-            self.microscope.move_stage_relative(stage_movement)
+            self.microscope.move_stage_absolute(stage_movement)
+            print(self.microscope.get_stage_position())
             self.imaging_settings.save=False
             image = acquire.new_image(self.microscope, self.imaging_settings)
             return np.std(image.data)
 
         contrast_values = []
         prev_t = None
+        start_angle = self.microscope.get_stage_position().t
         for v, t, b in index:
             if t != prev_t:
                 calibration.auto_focus_beam(self.microscope, self.settings, beam_type=BeamType.ELECTRON)  # Replace this with your actual function call
                 prev_t = t  # Update the previous value
-            contrast = measure_contrast(v, t, b)
+            contrast = measure_contrast(voltage=v, stage_tilt=float(t)+float(start_angle), stage_bias=b)
             contrast_values.append(contrast)
 
         df_contrast_values = pd.DataFrame({'contrast': contrast_values}, index=index)

@@ -92,22 +92,26 @@ class BasicFunctions:
         except Exception as e:
             error_message(f"Connection to microscope failed: {e}")
             sys.exit()
+
     def read_from_yaml(self, filename):
         """
         User generated yaml file with the basic settings for imaging with the ion/electron beam.
         """
+
+        def calc_constructor(loader, node):
+            value = loader.construct_scalar(node)
+            # Evaluate the expression safely (be cautious with eval in production)
+            return eval(value)
+
+        yaml.add_constructor('!calc', calc_constructor)
+
         with open(os.path.join(self.project_root, 'modules_czii', filename + '.yaml')) as file:
-            dictionary = yaml.safe_load(file)
-        # if 'reduced_area' in dictionary or dictionary['reduced_area'] is not None:
-        #     dictionary['reduced_area'] = {
-        #                                     "left": dictionary['reduced_area'][0],
-        #                                     "top": dictionary['reduced_area'][1],
-        #                                     "width": dictionary['reduced_area'][2],
-        #                                     "height": dictionary['reduced_area'][3],
-        #                                 }
-
-
-        return dictionary
+            dictionary = yaml.load(file, Loader=yaml.FullLoader)
+        for key in dictionary:
+            if key == 'scan_rotation':
+                dictionary[key] = np.deg2rad(dictionary[key])
+        imaging_settings = structures.ImageSettings.from_dict(dictionary)
+        return imaging_settings, dictionary
 
     def read_from_dict(self, filename):
         """

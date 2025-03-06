@@ -10,21 +10,20 @@ from datetime import datetime
 class Imaging:
     def __init__(self, fib_microscope, beam='electron', autofocus=False, fib_settings=None):
         bf = BasicFunctions()
-        #self.imaging_settings_dict = bf.read_from_dict(filename=f"imaging_{beam}")
-        self.imaging_settings_dict = bf.read_from_yaml(filename=f"imaging_{beam}")
-        self.imaging_settings = structures.ImageSettings.from_dict(self.imaging_settings_dict)
-        self.beam = beam
-        self.beam_type = getattr(structures.BeamType, self.beam.upper())
-        self.folder_path = BasicFunctions.folder_path
-        self.imaging_settings.path = self.folder_path
-        self.imaging_settings.beam_type = self.beam_type
-        self.fib_microscope = fib_microscope
-        self.beam_settings = structures.BeamSettings.from_dict(self.imaging_settings_dict, self.beam_type)
-        self.fib_microscope.set_beam_settings(self.beam_settings)
         if autofocus is True and fib_settings is None:
             raise ValueError("optional_input is required when use_optional is True")
         self.autofocus = autofocus
         self.fib_settings = fib_settings
+        #self.imaging_settings_dict = bf.read_from_dict(filename=f"imaging_{beam}")
+        self.imaging_settings, self.imaging_settings_dict = bf.read_from_yaml(filename=f"imaging_{beam}")
+        self.beam = beam
+        self.beam_type = getattr(structures.BeamType, self.beam.upper())
+        self.beam_settings = structures.BeamSettings.from_dict(self.imaging_settings_dict, self.beam_type)
+        self.folder_path = BasicFunctions.folder_path
+        self.imaging_settings.path = self.folder_path
+        self.imaging_settings.beam_type = self.beam_type
+        self.fib_microscope = fib_microscope
+        self.fib_microscope.set_beam_settings(self.beam_settings)
 
     def acquire_image(self, hfw=None, folder_path=None, save=None):
         """
@@ -122,8 +121,8 @@ class Imaging:
     def fast_acquire(self, number_frames):
         self.imaging_settings.save = True
         for i in range(number_frames):
-            acquisition_time = datetime.now().strftime("%H-%M-%MS")
-            image = acquire.acquire_image(self.fib_microscope, self.imaging_settings)
-            print(acquisition_time)
-            print(np.shape(image.data))
-            print(image.data)
+            now = datetime.now()
+            ms = now.strftime("%f")[:3]
+            self.imaging_settings.filename = f"{i}_{now:%H-%M-%S}-{ms}"
+            acquire.acquire_image(self.fib_microscope, self.imaging_settings)
+

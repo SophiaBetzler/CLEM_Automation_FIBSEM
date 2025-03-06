@@ -36,9 +36,11 @@ class Fibsemcontrol():
         """
         self.project_root = Path(__file__).resolve().parent.parent
         self.folder_path = folder_path
-        self.imaging_settings = self.read_from_yaml()
+        self.imaging_settings, dictionary = self.read_from_yaml()
         self.imaging_settings.path = self.folder_path
         self.imaging_settings.beam_type = BeamType.ELECTRON
+        self.beam_settings = structures.BeamSettings.from_dict(dictionary)
+
         try:
             #for hydra microscope use:
             config_path = os.path.join(self.project_root, 'config', 'czii-tfs-hydra-configuration.yaml')
@@ -57,28 +59,23 @@ class Fibsemcontrol():
         """
         Read data from the yaml file. Return imaging setting object.
         """
-        def get_all_keys(obj):
-            keys = []
-            if isinstance(obj, dict):
-                for key, value in obj.items():
-                    keys.append(key)
-                    keys.extend(get_all_keys(value))
-            elif isinstance(obj, list):
-                for item in obj:
-                    keys.extend(get_all_keys(item))
-            return keys
+
+        def calc_constructor(loader, node):
+            value = loader.construct_scalar(node)
+            # Evaluate the expression safely (be cautious with eval in production)
+            return eval(value)
+
+        yaml.add_constructor('!calc', calc_constructor)
+
         project_root = Path(__file__).resolve().parent.parent
         config_file = os.path.join(project_root, 'config', 'ConditionScreening')
         with open(f"{config_file}.yaml", 'r') as file:
-            data = yaml.safe_load(file)
-        parameters = get_all_keys(data)
-        imaging_settings = structures.ImageSettings()
-        for parameter in parameters:
-            if parameter == 'scan_rotation':
-                setattr(imaging_settings, parameter, np.deg2rad(data[parameter]))
-            else:
-                setattr(imaging_settings, parameter, data[parameter])
-        return imaging_settings
+            dictionary = yaml.load(file, Loader=yaml.FullLoader)
+        for key in dictionary:
+            if key == 'scan_rotation':
+                dictionary[key] = np.deg2rad(dictionary[key])
+        imaging_settings = structures.ImageSettings.from_dict(dictionary)
+        return imaging_settings, dictionary
 
     def set_starting_conditions(self, brightness, contrast):
         """
@@ -91,7 +88,6 @@ class Fibsemcontrol():
         calibration.auto_focus_beam(self.microscope, self.settings, beam_type=BeamType.ELECTRON)
         self.imaging_settings.save=True
         self.imaging_settings.filename='Before'
-        print(vars(self.imaging_settings))
         acquire.new_image(self.microscope, self.imaging_settings)
         calibration.auto_charge_neutralisation(n_iterations=10, microscope=self.microscope, image_settings=self.imaging_settings)
         new_detector_settings = FibsemDetectorSettings(
@@ -121,18 +117,19 @@ class Fibsemcontrol():
             Script acquires images at preset settings and measures the contrast in the image.
             The contrast measurement is currently done using the standard deviation.
             """
+            tilt = stage_tilt - self.microscope.get_stage_position().t
             stage_movement = FibsemStagePosition(x=float(0.0),
                                                  y=float(0.0),
                                                  z=float(0.0),
                                                  r=np.deg2rad(0.0),
-                                                 t=np.deg2rad(stage_tilt))
+                                                 t=np.deg2rad(tilt))
             # Thermo = ThermoMicroscope()
             # limits = Thermo.connection.beams.electron_beam.beam_deceleration.stage_bias.limits
             # print(f"The limits for the stage bias are: {limits}")
             # Thermo.connection.beams.electron_beam.beam_deceleration.stage_bias.value = stage_bias
-            self.imaging_settings.voltage = voltage
-            self.microscope.move_stage_absolute(stage_movement)
-            print(self.microscope.get_stage_position())
+            self.beam_settings.voltage = voltage
+            self.microscope.set_beam_settings(self.beam_settings)
+            self.microscope.move_stage_relative(stage_movement)
             self.imaging_settings.save=False
             image = acquire.new_image(self.microscope, self.imaging_settings)
             return np.std(image.data)
@@ -151,7 +148,7 @@ class Fibsemcontrol():
         max_index = df_contrast_values['contrast'].idxmax()
         print("RESULT---------------------------")
         print(f"The indices leading to the maximum contrast are a voltage of {max_index[0]}, "
-              f"a relative stage tilt of {max_index[1]} and a stage_bias of {max_index[2]}.")
+              f"a relative stage tilt of {max_index[1]+start_angle} and a stage_bias of {max_index[2]}.")
         self.imaging_settings.save=True
         self.imaging_settings.filename='Highest_Contrast'
         self.imaging_settings.voltage=max_index[0]
@@ -195,7 +192,6 @@ class ParameterWindow(QtWidgets.QWidget):
         self.initUI()
         self.fibsem = fibsemcontrol
         self.imaging_settings = fibsemcontrol.imaging_settings
-        print(self.imaging_settings.voltage)
 
     def initUI(self):
         # Main layout for the window

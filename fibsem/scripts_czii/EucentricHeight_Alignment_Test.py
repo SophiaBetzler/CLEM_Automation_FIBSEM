@@ -119,6 +119,7 @@ class Fibsemcontrol():
                                              r=np.deg2rad(0.0),
                                              t=np.deg2rad(0.0))
         self.microscope.move_stage_relative(stage_movement)
+        print(f"The current stage position is {self.microscope.get_stage_position()}")
 
 if __name__ == "__main__":
     #create a folder for the experiment
@@ -135,14 +136,12 @@ if __name__ == "__main__":
     indices = pd.MultiIndex(levels=[[], []], codes=[[], []], names=['tilt', 'z-shift'])
     df_tilt = pd.DataFrame(columns=['shiftX', 'shiftY'], index=indices)
     df_zero = pd.DataFrame(columns=['shiftX', 'shiftY'], index=indices)
-    z_shifts = [float(0.5e-3), float(1.0e-3), float(1.5e-3)]
+    z_shifts = [float(0.1e-5), float(0.2e-5), float(0.3e-5)]
     for z_shift in z_shifts:
         fibsem.vertical_move(z_shift)
         angles = [2, 1, -1, -2, -5]
         for angle in angles:
             shift_tilt, shift_before = fibsem.tilting_imaging(angle)
-            print(shift_tilt[0])
-            print(shift_before[1])
             shiftX_tilt.append(shift_tilt[0])
             shiftX_before.append(shift_before[0])
             shiftY_tilt.append(shift_tilt[1])
@@ -158,8 +157,7 @@ if __name__ == "__main__":
     with pd.ExcelWriter(folder_path + '/EucentricHeight.xlsx', engine='xlsxwriter') as writer:
         df_tilt.to_excel(writer, sheet_name='Tilted_Image_Comparison', index=False)
         df_zero.to_excel(writer, sheet_name='Zero_Tile_Image_Comparison', index=False)
-    print(df_tilt)
-    print(df_zero)
+
 
 #### MAKE SURE TO INSTALL PANDAS AND xlsxwriter!
 

@@ -36,12 +36,6 @@ class Fibsemcontrol():
         """
         self.project_root = Path(__file__).resolve().parent.parent
         self.folder_path = folder_path
-        self.imaging_settings, self.dictionary = self.read_from_yaml()
-        self.imaging_settings.path = self.folder_path
-        self.imaging_settings.beam_type = BeamType.ELECTRON
-        self.beam_settings = structures.BeamSettings.from_dict(self.dictionary)
-        print(self.beam_settings)
-
         try:
             #for hydra microscope use:
             config_path = os.path.join(self.project_root, 'config', 'czii-tfs-hydra-configuration.yaml')
@@ -55,19 +49,24 @@ class Fibsemcontrol():
         except Exception as e:
             error_message(f"Connection to microscope failed: {e}")
             sys.exit()
-
+        self.reduced_area = self.microscope.get_imaging_settings(beam_type=BeamType.ELECTRON).reduced_area
+        self.imaging_settings, self.dictionary = self.read_from_yaml()
+        self.imaging_settings.path = self.folder_path
+        self.imaging_settings.beam_type = BeamType.ELECTRON
+        self.imaging_settings.reduced_area = self.reduced_area
+        self.beam_settings = structures.BeamSettings.from_dict(self.dictionary)
+        self.imaging_settings.working_distance = (
+           self.microscope.get_available_values(key='working_distance', beam_type=BeamType.ELECTRON))
     def read_from_yaml(self):
         """
         Read data from the yaml file. Return imaging setting object.
         """
-
         def calc_constructor(loader, node):
             value = loader.construct_scalar(node)
             # Evaluate the expression safely (be cautious with eval in production)
             return eval(value)
 
         yaml.add_constructor('!calc', calc_constructor)
-
         project_root = Path(__file__).resolve().parent.parent
         config_file = os.path.join(project_root, 'config', 'ConditionScreening')
         with open(f"{config_file}.yaml", 'r') as file:
@@ -86,7 +85,7 @@ class Fibsemcontrol():
         contrast: pre-set contrast value which will not be changed during the experiment
         return: the contrast of the 'initial image' and saves this image as 'Before.tiff'
         """
-        calibration.auto_focus_beam(self.microscope, self.settings, beam_type=BeamType.ELECTRON)
+        #calibration.auto_focus_beam(self.microscope, self.settings, beam_type=BeamType.ELECTRON)
         self.imaging_settings.save=True
         self.imaging_settings.filename='Before'
         acquire.new_image(self.microscope, self.imaging_settings)
@@ -102,6 +101,18 @@ class Fibsemcontrol():
         image = acquire.new_image(self.microscope, self.imaging_settings)
         return np.std(image.data)
 
+    def set_detector_setting(self, brightness, contrast):
+        """
+        Funcions which ensures that the correct brightness and contrast settings are used
+        """
+        new_detector_settings = FibsemDetectorSettings(
+            type='ETD',
+            mode='SecondaryElectrons',
+            brightness=brightness,
+            contrast=contrast
+        )
+        self.microscope.set_detector_settings(detector_settings=new_detector_settings)
+
     def screen_conditions(self, voltages, stage_tilts, stage_biases):
         """
         Function to screen the conditions, defined to be most important for charging.
@@ -113,37 +124,49 @@ class Fibsemcontrol():
             names=['voltage', 'stage_tilt', 'stage_bias']
         )
 
-        def measure_contrast(voltage, stage_tilt, stage_bias):
+        def measure_contrast(voltage, stage_tilt, stage_bias, autofocus=False, set_voltage=False):
             """
             Script acquires images at preset settings and measures the contrast in the image.
             The contrast measurement is currently done using the standard deviation.
+            set_voltage: determines if a value is set for the voltage
+            autofocus: determiens if an autofocus routine is performed
             """
             tilt = stage_tilt - self.microscope.get_stage_position().t
             stage_movement = FibsemStagePosition(x=float(0.0),
-                                                 y=float(0.0),
+                                                  y=float(0.0),
                                                  z=float(0.0),
                                                  r=np.deg2rad(0.0),
                                                  t=np.deg2rad(tilt))
-            # Thermo = ThermoMicroscope()
+
+            Thermo = ThermoMicroscope()
+            print(Thermo)
             # limits = Thermo.connection.beams.electron_beam.beam_deceleration.stage_bias.limits
             # print(f"The limits for the stage bias are: {limits}")
             # Thermo.connection.beams.electron_beam.beam_deceleration.stage_bias.value = stage_bias
-            self.beam_settings.voltage = voltage
-            self.microscope.set_beam_settings(self.beam_settings)
+            if set_voltage is True:
+                self.beam_settings.voltage = voltage
+                self.microscope.set_beam_settings(self.beam_settings)
             self.microscope.move_stage_relative(stage_movement)
             self.imaging_settings.save=True
+            if autofocus is True:
+                calibration.auto_focus_beam(self.microscope, self.settings,
+                                            beam_type=BeamType.ELECTRON)  # Replace this with your actual function call
             self.imaging_settings.filename=f"voltage-{voltage}-stage_tilt-{tilt}-stage_bias-{stage_bias}"
             image = acquire.new_image(self.microscope, self.imaging_settings)
             return np.std(image.data)
 
         contrast_values = []
         prev_t = None
+        prev_v = None
         start_angle = self.microscope.get_stage_position().t
         for v, t, b in index:
             if t != prev_t:
-                calibration.auto_focus_beam(self.microscope, self.settings, beam_type=BeamType.ELECTRON)  # Replace this with your actual function call
+                autofocus = True
                 prev_t = t  # Update the previous value
-            contrast = measure_contrast(voltage=v, stage_tilt=float(t)+float(start_angle), stage_bias=b)
+            if v != prev_v:
+                set_voltage = True
+                prev_v = v
+            contrast = measure_contrast(voltage=v, stage_tilt=float(t)+float(start_angle), stage_bias=b, autofocus=autofocus, set_voltage=set_voltage)
             contrast_values.append(contrast)
 
         df_contrast_values = pd.DataFrame({'contrast': contrast_values}, index=index)
@@ -168,11 +191,6 @@ class Fibsemcontrol():
         for voltage in voltages:
             df_subset = df_contrast_values.xs(voltage, level='voltage')
             df_reset = df_subset.reset_index()
-
-            # Pivot the table so that:
-            # - Rows are stage_tilt values,
-            # - Columns are voltage values,
-            # - Values are contrast.
             df_pivot = df_reset.pivot(index='stage_tilt', columns='stage_bias', values='contrast')
             biases_vals = df_pivot.columns.values
             stage_tilt_vals = df_pivot.index.values
@@ -271,16 +289,18 @@ class ParameterWindow(QtWidgets.QWidget):
             voltages = np.linspace(float(voltage_min), float(voltage_max), int(voltage_steps)).tolist()
         else:
             voltages = [self.fibsem.beam_settings.voltage]
-        biases = np.linspace(float(bias_min), float(bias_max), int(bias_steps)).tolist()
-        tilts = np.linspace(float(tilt_min), float(tilt_max), int(tilt_steps)).tolist()
-
-        ###### HERE YOU STILL NEED TO MAKE SURE THAT THE TILTS ARE CORRECT!
-        #try:
-        fibsem.set_starting_conditions(brightness=float(brightness), contrast=float(contrast))
+        if len(bias_min) !=0 or len(bias_max) !=0 or len(bias_steps) !=0:
+            biases = np.linspace(float(bias_min), float(bias_max), int(bias_steps)).tolist()
+        else:
+            biases = [fibsem.dictionary['stage_bias']]
+        if len(tilt_min) !=0 or len(tilt_max) !=0 or len(tilt_steps) !=0:
+            tilts = np.linspace(float(tilt_min), float(tilt_max), int(tilt_steps)).tolist()
+        else:
+            tilts = [0]
+        #fibsem.set_starting_conditions(brightness=float(brightness), contrast=float(contrast))
+        fibsem.set_detector_setting(brightness=float(brightness), contrast=float(contrast))
         data_frame_screening = fibsem.screen_conditions(voltages, tilts, biases)
         fibsem.create_surface_plots(data_frame_screening, voltages)
-        # except Exception as e:
-        #     print(f"The screening failed: {e}")
         self.close()
 
 if __name__ == "__main__":

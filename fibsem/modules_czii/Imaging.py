@@ -5,6 +5,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 from datetime import datetime
+import logging
 
 
 class Imaging:
@@ -118,11 +119,33 @@ class Imaging:
         plt.savefig(os.path.join(imaging_settings.path, "tiles.png"), dpi=300)
         plt.show()
 
-    def fast_acquire(self, number_frames):
-        self.imaging_settings.save = True
-        for i in range(number_frames):
-            now = datetime.now()
-            ms = now.strftime("%f")[:3]
-            self.imaging_settings.filename = f"{i}_{now:%H-%M-%S}-{ms}"
-            acquire.acquire_image(self.fib_microscope, self.imaging_settings)
+    def fast_acquire(self, number_frames, line_acquisition=False):
+        logging.disable(logging.CRITICAL)
+        if line_acquisition is True:
+            image_resolution = self.imaging_settings.resolution
+            self.imaging_settings.save = False
+            self.imaging_settings.reduced_area = structures.FibsemRectangle(top=0.3,
+                                                                            left=0.2,
+                                                                            width=0.6,
+                                                                            height=float(1/image_resolution[1]))
+            array_timeseries = np.zeros((0, int(self.imaging_settings.reduced_area.width*image_resolution[0])))
+            list_timestamps = []
+            for i in range(number_frames):
+                image = acquire.acquire_image(self.fib_microscope, self.imaging_settings)
+                array_timeseries = np.append(array_timeseries, [image.data[0, :]], axis=0)
+                now = datetime.now()
+                ms = now.strftime("%f")[:3]
+                list_timestamps.append(f"{i}_{now:%H-%M-%S}-{ms}")
+            np.savetxt(f"{self.folder_path}/{now:%H-%M-%S}-{ms}_fast_acquisition.txt", array_timeseries, fmt='%.3f')
+            with open(f"{self.folder_path}/{now:%H-%M-%S}-{ms}_fast_acquisition_timestamps.txt", "w") as f:
+                for item in list_timestamps:
+                    f.write(str(item) + "\n")
+        else:
+            self.imaging_settings.save = True
+            for i in range(number_frames):
+                now = datetime.now()
+                ms = now.strftime("%f")[:3]
+                self.imaging_settings.filename = f"{i}_{now:%H-%M-%S}-{ms}"
+                acquire.acquire_image(self.fib_microscope, self.imaging_settings)
+        logging.disable(logging.NOTSET)
 

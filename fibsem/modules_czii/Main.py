@@ -11,7 +11,7 @@ fib_microscope, fib_settings = bf.connect_to_microscope()
 
 imaging = Imaging(fib_microscope=fib_microscope, beam='electron')
 #imaging.acquire_image()
-imaging.fast_acquire(10)
+imaging.fast_acquire(10, line_acquisition=True)
 # parameters_dict = {
 #                      'hfw': [300.0e-6, 400.0e-6, 500.0e-6, 600.0e-6],
 #                      'current': [1e-12, 1e-12, 1e-11]

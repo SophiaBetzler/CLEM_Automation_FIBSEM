@@ -19,7 +19,9 @@ try:
 except Exception as e:
     print(f"Connection to microscope failed: {e}")
 
-Thermo = microscope.ThermoMicroscope()
-print(Thermo)
-current = Thermo.connection.beams.electron_beam.beam_current.value
-print(f"The current of the electron beam is {current}.")
+limits = fib_microscope.connection.beams.electron_beam.beam_deceleration.stage_bias.limits
+print(f"The limits for the stage bias are: {limits}")
+mirror = fib_microscope.connection.detector.custom_settings.mirror_voltage.value
+print(f"The current value of the mirror is: {mirror}")
+suction = fib_microscope.connection.detector.custom_settings.suction_tube_voltage.value
+print(f"The suction value is: {suction}.")

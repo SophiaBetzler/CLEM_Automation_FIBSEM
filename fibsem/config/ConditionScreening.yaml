@@ -4,11 +4,10 @@ hfw: 600.0e-6
 voltage: 2000.0
 resolution: [1536, 1024]
 scan_rotation: 180.0
-working_distance: 4.0e-3
 autocontrast: False
 autogamma: False
 drift_correction: False
 frame_integration: 1
 line_integration: 1
 save: False
-reduced_area: {'top': 0.3, 'left': 0.3, 'width': 0.4, 'height': !calc "5/1024"}
+stage_bias: 70

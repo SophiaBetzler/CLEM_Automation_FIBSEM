@@ -138,11 +138,13 @@ class Fibsemcontrol():
                                                  r=np.deg2rad(0.0),
                                                  t=np.deg2rad(tilt))
 
-            Thermo = ThermoMicroscope()
-            print(Thermo)
-            # limits = Thermo.connection.beams.electron_beam.beam_deceleration.stage_bias.limits
-            # print(f"The limits for the stage bias are: {limits}")
-            # Thermo.connection.beams.electron_beam.beam_deceleration.stage_bias.value = stage_bias
+            # If we want to set the stage bias values
+            #self.microscope.connection.beams.electron_beam.beam_deceleration.stage_bias.value = stage_bias
+            # If we want to set the mirror values:
+            self.microscope.connection.detector.custom_settings.mirror_voltage.value = stage_bias
+            # If we want to set the suction tube values:
+            #self.microscope.connection.detector.custom_settings.suction_tube_voltage.value = stage_bias
+
             if set_voltage is True:
                 self.beam_settings.voltage = voltage
                 self.microscope.set_beam_settings(self.beam_settings)

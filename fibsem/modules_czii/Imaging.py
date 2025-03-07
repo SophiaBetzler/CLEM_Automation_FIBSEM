@@ -137,6 +137,10 @@ class Imaging:
                 ms = now.strftime("%f")[:3]
                 list_timestamps.append(f"{i}_{now:%H-%M-%S}-{ms}")
             np.savetxt(f"{self.folder_path}/{now:%H-%M-%S}-{ms}_fast_acquisition.txt", array_timeseries, fmt='%.3f')
+            np.save(f"{self.folder_path}/{now:%H-%M-%S}-{ms}_fast_acquisition.txt", array_timeseries)
+            plt.imshow(array_timeseries, cmap='gray')
+            plt.savefig(f"{self.folder_path}/{now:%H-%M-%S}-{ms}_fast_acquisition.png", dpi=600, bbox_inches="tight")
+            plt.show()
             with open(f"{self.folder_path}/{now:%H-%M-%S}-{ms}_fast_acquisition_timestamps.txt", "w") as f:
                 for item in list_timestamps:
                     f.write(str(item) + "\n")

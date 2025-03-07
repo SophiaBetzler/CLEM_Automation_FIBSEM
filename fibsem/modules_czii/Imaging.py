@@ -6,6 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from datetime import datetime
 import logging
+import math
 
 
 class Imaging:
@@ -128,7 +129,8 @@ class Imaging:
                                                                             left=0.2,
                                                                             width=0.6,
                                                                             height=float(1/image_resolution[1]))
-            array_timeseries = np.zeros((0, int(self.imaging_settings.reduced_area.width*image_resolution[0])))
+
+            array_timeseries = np.zeros((0, int(math.ceil(self.imaging_settings.reduced_area.width*image_resolution[0]))))
             list_timestamps = []
             for i in range(number_frames):
                 image = acquire.acquire_image(self.fib_microscope, self.imaging_settings)

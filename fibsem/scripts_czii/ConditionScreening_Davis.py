@@ -41,11 +41,11 @@ class Fibsemcontrol():
             config_path = os.path.join(self.project_root, 'config', 'czii-tfs-hydra-configuration.yaml')
             #for arctis microscope use:
             #config_path = os.path.join(self.project_root, 'config', 'tfs-arctis-configuration.yaml')
-            #self.microscope, self.settings = utils.setup_session(manufacturer='Thermo', ip_address='192.168.0.1',
-            #                                                      config_path=config_path)
+            self.microscope, self.settings = utils.setup_session(manufacturer='Thermo', ip_address='192.168.0.1',
+                                                                 config_path=config_path)
             #
-            self.microscope, self.settings = utils.setup_session(manufacturer='Demo', ip_address='localhost',
-                                                                  config_path=config_path)
+            # self.microscope, self.settings = utils.setup_session(manufacturer='Demo', ip_address='localhost',
+            #                                                       config_path=config_path)
         except Exception as e:
             error_message(f"Connection to microscope failed: {e}")
             sys.exit()
@@ -91,7 +91,7 @@ class Fibsemcontrol():
         acquire.new_image(self.microscope, self.imaging_settings)
         calibration.auto_charge_neutralisation(n_iterations=10, microscope=self.microscope, image_settings=self.imaging_settings)
         new_detector_settings = FibsemDetectorSettings(
-            type='ETD',
+            type='TLD',
             mode='SecondaryElectrons',
             brightness=brightness,
             contrast=contrast
@@ -106,10 +106,10 @@ class Fibsemcontrol():
         Funcions which ensures that the correct brightness and contrast settings are used
         """
         new_detector_settings = FibsemDetectorSettings(
-            type='ETD',
-            mode='SecondaryElectrons',
-            brightness=brightness,
-            contrast=contrast
+            type='TLD',
+            mode='Custom 1',
+            brightness=brightness/100,
+            contrast=contrast/100
         )
         self.microscope.set_detector_settings(detector_settings=new_detector_settings)
 
@@ -118,7 +118,6 @@ class Fibsemcontrol():
         Function to screen the conditions, defined to be most important for charging.
         Inputs are defined in the user-interface. It is expecting lists.
         """
-        print(self.microscope.get_microscope_state())
         index = pd.MultiIndex.from_product(
             [voltages, stage_tilts, stage_biases],
             names=['voltage', 'stage_tilt', 'stage_bias']
@@ -137,17 +136,18 @@ class Fibsemcontrol():
                                                  z=float(0.0),
                                                  r=np.deg2rad(0.0),
                                                  t=np.deg2rad(tilt))
-
             # If we want to set the stage bias values
             #self.microscope.connection.beams.electron_beam.beam_deceleration.stage_bias.value = stage_bias
             # If we want to set the mirror values:
             self.microscope.connection.detector.custom_settings.mirror_voltage.value = stage_bias
+            #self.microscope.connection.detector.custom_settings.mirror_voltage.value = stage_bias
             # If we want to set the suction tube values:
             #self.microscope.connection.detector.custom_settings.suction_tube_voltage.value = stage_bias
 
             if set_voltage is True:
                 self.beam_settings.voltage = voltage
-                self.microscope.set_beam_settings(self.beam_settings)
+                #self.microscope.set_beam_settings(self.beam_settings)
+
             self.microscope.move_stage_relative(stage_movement)
             self.imaging_settings.save=True
             if autofocus is True:

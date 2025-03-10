@@ -39,7 +39,7 @@ class FiducialID:
         Function to identify the fiducials in the images. It is iterative at lower and higher
         magnification.
         """
-        self.data_generation(hfw=300e-6)
+        self.data_generation(hfw=150e-6)
         self.bf.execute_external_script(script='Identify_Fiducial_Remote.py',
                                         dir_name='Ultralytics',
                                         parameter=self.number_fiducials)
@@ -53,6 +53,7 @@ class FiducialID:
         os.remove(os.path.join(self.temp_folder_path, 'stage_move.json'))
 
         print(self.fib_microscope.get_stage_position())
+        print(f"The move required in X direction is {required_move['moveX']}, the move in Y direction is {required_move['moveY']}")
         self.fib_microscope.stable_move(required_move['moveX'], required_move['moveY'], self.beam_type)
         print(self.fib_microscope.get_stage_position())
         if self.number_fiducials == 1:
@@ -75,6 +76,8 @@ class FiducialID:
         os.remove(os.path.join(self.temp_folder_path, 'stage_move.json'))
 
         print(self.fib_microscope.get_stage_position())
+        print(
+            f"The move required in X direction is {required_move['moveX']}, the move in Y direction is {required_move['moveY']}")
         self.fib_microscope.stable_move(required_move['moveX'], required_move['moveY'], self.beam_type)
         print(self.fib_microscope.get_stage_position())
 

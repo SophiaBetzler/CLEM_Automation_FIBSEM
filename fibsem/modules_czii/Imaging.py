@@ -127,19 +127,21 @@ class Imaging:
             self.imaging_settings.save = False
             self.imaging_settings.reduced_area = structures.FibsemRectangle(top=0.3,
                                                                             left=0.2,
-                                                                            width=0.6,
+                                                                            width=0.3,
                                                                             height=float(1/image_resolution[1]))
-
-            array_timeseries = np.zeros((0, int(math.ceil(self.imaging_settings.reduced_area.width*image_resolution[0]))))
-            list_timestamps = []
-            for i in range(number_frames):
+            image = acquire.acquire_image(self.fib_microscope, self.imaging_settings)
+            array_timeseries = [image.data[0, :]]
+            now = datetime.now()
+            ms = now.strftime("%f")[:3]
+            list_timestamps = [f"{0}_{now:%H-%M-%S}-{ms}"]
+            for i in range(1, number_frames):
                 image = acquire.acquire_image(self.fib_microscope, self.imaging_settings)
                 array_timeseries = np.append(array_timeseries, [image.data[0, :]], axis=0)
                 now = datetime.now()
                 ms = now.strftime("%f")[:3]
                 list_timestamps.append(f"{i}_{now:%H-%M-%S}-{ms}")
             np.savetxt(f"{self.folder_path}/{now:%H-%M-%S}-{ms}_fast_acquisition.txt", array_timeseries, fmt='%.3f')
-            np.save(f"{self.folder_path}/{now:%H-%M-%S}-{ms}_fast_acquisition.txt", array_timeseries)
+            np.save(f"{self.folder_path}/{now:%H-%M-%S}-{ms}_fast_acquisition", array_timeseries)
             plt.imshow(array_timeseries, cmap='gray')
             plt.savefig(f"{self.folder_path}/{now:%H-%M-%S}-{ms}_fast_acquisition.png", dpi=600, bbox_inches="tight")
             plt.show()
@@ -148,6 +150,7 @@ class Imaging:
                     f.write(str(item) + "\n")
         else:
             self.imaging_settings.save = True
+            self.imaging_settings.reduced_area = None
             for i in range(number_frames):
                 now = datetime.now()
                 ms = now.strftime("%f")[:3]

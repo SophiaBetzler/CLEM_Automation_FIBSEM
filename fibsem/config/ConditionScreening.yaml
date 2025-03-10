@@ -10,4 +10,4 @@ drift_correction: False
 frame_integration: 1
 line_integration: 1
 save: False
-stage_bias: 70
+stage_bias: -12.0

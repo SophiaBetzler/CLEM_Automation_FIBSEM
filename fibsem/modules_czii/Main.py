@@ -3,15 +3,15 @@ from Imaging import Imaging
 from Fiducial_Identification import FiducialID
 from Milling import MillingSetup
 
-bf = BasicFunctions(manufacturer='Demo',
-                ip='localhost',
+bf = BasicFunctions(manufacturer='Thermo',
+                ip='192.168.0.1',
                 tool='Hydra')
 
 fib_microscope, fib_settings = bf.connect_to_microscope()
 
 imaging = Imaging(fib_microscope=fib_microscope, beam='electron')
 #imaging.acquire_image()
-imaging.fast_acquire(1, line_acquisition=False)
+imaging.fast_acquire(200, line_acquisition=True)
 # parameters_dict = {
 #                      'hfw': [300.0e-6, 400.0e-6, 500.0e-6, 600.0e-6],
 #                      'current': [1e-12, 1e-12, 1e-11]

@@ -51,6 +51,8 @@ class EucentricHeight():
         self.beam_settings = self.bf.read_from_yaml(os.path.join(self.project_root, 'config', 'EucentricHeight'))
         self.folder_path = self.bf.folder_path
         self.imaging_settings.path = self.folder_path
+        self.imaging_settings.hfw = 600.0e-6
+        self.imaging_settings.save = True
         self.temp_folder_path = self.bf.temp_folder_path
 
     def measure_image_shift(self, image0, image):
@@ -100,21 +102,23 @@ class EucentricHeight():
     def tilting_imaging(self, angle):
         before_stage_position = self.fib_microscope.get_stage_position()
         ms = datetime.now().microsecond // 1000
-        self.imaging_settings.filename = datetime.now().strftime("%H-%M-%S")+ f"-{ms:03d}+before"
-        image0 = self.imaging.acquire_image(hfw=600.0e-6, save=True)
+        self.imaging_settings.filename = datetime.now().strftime("%H-%M-%S")+f"-{ms:03d}_before"
+        image0 = acquire.new_image(self.fib_microscope, self.imaging_settings)
         stage_movement = FibsemStagePosition(x=float(0.0),
                                              y=float(0.0),
                                              z=float(0.0),
                                              r=np.deg2rad(0.0),
                                              t=np.deg2rad(angle))
         self.fib_microscope.move_stage_relative(stage_movement)
-        self.imaging_settings.filename = datetime.now().strftime("%H-%M-%S") + f"-{ms:03d} + {angle}"
-        image = self.imaging.acquire_image(hfw=600.0e-6, save=True)
+        ms = datetime.now().microsecond // 1000
+        self.imaging_settings.filename = datetime.now().strftime("%H-%M-%S") + f"-{ms:03d}_{angle}"
+        image = acquire.acquire_image(self.fib_microscope, self.imaging_settings)
         shift_tilt = self.measure_image_shift(image0, image)
         fiducial_shift_tilt = self.measure_fiducial_position(image0, image)
         self.fib_microscope.move_stage_absolute(before_stage_position)
-        self.imaging_settings.filename = datetime.now().strftime("%H-%M-%S") + f"-{ms:03d} +after"
-        image_after = self.imaging.acquire_image(hfw=600.0e-6, save=True)
+        ms = datetime.now().microsecond // 1000
+        self.imaging_settings.filename = datetime.now().strftime("%H-%M-%S") + f"-{ms:03d}_after"
+        image_after = acquire.acquire_image(self.fib_microscope, self.imaging_settings)
         shift_before = self.measure_image_shift(image0, image_after)
         fiducial_shift_before = self.measure_fiducial_position(image0, image_after)
         return shift_tilt, shift_before, fiducial_shift_tilt, fiducial_shift_before

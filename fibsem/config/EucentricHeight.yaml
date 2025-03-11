@@ -1,4 +1,4 @@
-dwell_time: 1.0e-7
+dwell_time: 100.0e-9
 current: 25.0e-12
 hfw: 600.0e-6
 voltage: 2000.0

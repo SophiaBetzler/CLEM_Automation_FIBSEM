@@ -10,18 +10,22 @@ import math
 
 
 class Imaging:
-    def __init__(self, fib_microscope, beam='electron', autofocus=False, fib_settings=None):
-        bf = BasicFunctions()
+    def __init__(self, fib_microscope, bf, beam='electron', imaging_settings = None, autofocus=False, fib_settings=None):
+        self.bf = bf
         if autofocus is True and fib_settings is None:
             raise ValueError("optional_input is required when use_optional is True")
         self.autofocus = autofocus
         self.fib_settings = fib_settings
         #self.imaging_settings_dict = bf.read_from_dict(filename=f"imaging_{beam}")
-        self.imaging_settings, self.imaging_settings_dict = bf.read_from_yaml(filename=f"imaging_{beam}")
+        if imaging_settings is None:
+            self.imaging_settings, self.imaging_settings_dict = bf.read_from_yaml(filename=f"imaging_{beam}")
+        else:
+            self.imaging_settings = imaging_settings
+            _, self.imaging_settings_dict = bf.read_from_yaml(filename=f"imaging_{beam}")
         self.beam = beam
         self.beam_type = getattr(structures.BeamType, self.beam.upper())
         self.beam_settings = structures.BeamSettings.from_dict(self.imaging_settings_dict, self.beam_type)
-        self.folder_path = BasicFunctions.folder_path
+        self.folder_path = bf.folder_path
         self.imaging_settings.path = self.folder_path
         self.imaging_settings.beam_type = self.beam_type
         self.fib_microscope = fib_microscope
@@ -56,6 +60,7 @@ class Imaging:
             image = acquire.new_image(self.fib_microscope, self.imaging_settings)
             plt.imshow(image.data, cmap='gray')
             plt.show()
+            return image
         except Exception as e:
             print(f"The image acquisition failed because of {e}.")
 

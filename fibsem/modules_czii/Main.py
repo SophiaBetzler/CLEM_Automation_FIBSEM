@@ -16,16 +16,17 @@ bf = BasicFunctions(
                  tool='Hydra')
 
 fib_microscope, fib_settings = bf.connect_to_microscope()
+imaging = Imaging(fib_microscope=fib_microscope, beam='electron', bf=bf)
 
-eucentric = EucentricHeight(fib_microscope=fib_microscope, bf=bf)
+#eucentric = EucentricHeight(fib_microscope=fib_microscope, bf=bf)
 
-eucentric.eucentric_height_tilt_series(z_shifts=[-1.0e-5, -0.5e-5, 0.0e-5, +0.5e-5],
-                                     tilts=[-35.0, -25.0, -20.0, -15.0, -10.0, -5.0,
-                                            0.0, +5.0, +10.0])
+#eucentric.eucentric_height_tilt_series(z_shifts=[-1.0e-5, -0.5e-5, 0.0e-5, +0.5e-5],
+#                                        tilts=[-35.0, -25.0, -20.0, -15.0, -10.0, -5.0,
+#                                                0.0, +5.0, +10.0])
 
-imaging = Imaging(fib_microscope=fib_microscope, beam='ion', bf=bf)
+
 _ = imaging.acquire_image()
-# imaging.fast_acquire(200, line_acquisition=True)
+imaging.fast_acquire(200, line_acquisition=True)
 # parameters_dict = {
 #                      'hfw': [300.0e-6, 400.0e-6, 500.0e-6, 600.0e-6],
 #                      'current': [1e-12, 1e-12, 1e-11]

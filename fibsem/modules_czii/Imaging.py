@@ -131,20 +131,41 @@ class Imaging:
             image_resolution = self.imaging_settings.resolution
             self.imaging_settings.save = False
             self.imaging_settings.reduced_area = structures.FibsemRectangle(top=0.3,
-                                                                            left=0.2,
-                                                                            width=0.3,
+                                                                            left=0.0,
+                                                                            width=1.0,
                                                                             height=float(1/image_resolution[1]))
-            image = acquire.acquire_image(self.fib_microscope, self.imaging_settings)
+            #To use fast readout switch to ThermoFisher
+            self.fib_microscope.connection.beams.electron_beam.scanning.mode.set_reduced_area = \
+                (self.imaging_settings.reduced_area.top,
+                 self.imaging_settings.reduced_area.left,
+                 self.imaging_settings.reduced_area.width,
+                 self.imaging_settings.reduced_area.height)
+            self.fib_microscope.connection.beams.electron_beam.beam_current.value = self.imaging_settings.current
+            self.fib_microscope.connection.beams.electron_beam.high_voltage.value = self.beam_settings.voltage
+            self.fib_microscope.connection.beams.electron_beam.horizontal_field_width.value = self.beam_settings.hfw
+            self.fib_microscope.connection.beams.electron_beam.scanning.resolution.value = (
+                self.fib_microscope.connection.ScanningResolution.PRESET_1536x1024)
+            self.fib_microscope.connection.beams.electron_beam.scanning.dwell_time.value = self.imaging_settings.dwell_time
+            settings = self.fib_microscope.connection.GetImageSettings(wait_for_frame=True)
+            image = self.fib_microscope.connection.microscope.imaging.get_image(settings)
+            now = datetime.now()
+            ms = now.strftime("%f")[:3]
             array_timeseries = [image.data[0, :]]
             now = datetime.now()
             ms = now.strftime("%f")[:3]
             list_timestamps = [f"{0}_{now:%H-%M-%S}-{ms}"]
-            for i in range(1, number_frames):
-                image = acquire.acquire_image(self.fib_microscope, self.imaging_settings)
-                array_timeseries = np.append(array_timeseries, [image.data[0, :]], axis=0)
+            k = 0
+            while self.fib_microscope.connection.microscope.imaging.state == self.fib_microscope.connection.ImagingState.ACQUIRING \
+                and k < number_frames:
+                settings = self.fib_microscope.connection.GetImageSettings(wait_for_frame=True)
+                image = self.fib_microscope.connection.microscope.imaging.get_image(settings)
                 now = datetime.now()
                 ms = now.strftime("%f")[:3]
-                list_timestamps.append(f"{i}_{now:%H-%M-%S}-{ms}")
+                array_timeseries.append([image.data[0, :]])
+                now = datetime.now()
+                ms = now.strftime("%f")[:3]
+                list_timestamps.append([f"{0}_{now:%H-%M-%S}-{ms}"])
+                k=k+1
             np.savetxt(f"{self.folder_path}/{now:%H-%M-%S}-{ms}_fast_acquisition.txt", array_timeseries, fmt='%.3f')
             np.save(f"{self.folder_path}/{now:%H-%M-%S}-{ms}_fast_acquisition", array_timeseries)
             plt.imshow(array_timeseries, cmap='gray')

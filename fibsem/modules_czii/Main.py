@@ -1,5 +1,6 @@
 from Basic_Functions import BasicFunctions
 from Imaging import Imaging
+from GIS_Sputter_Setup import GisSputterAutomation
 from Fiducial_Identification import FiducialID
 from Milling import MillingSetup
 from EucentricHeight import EucentricHeight
@@ -16,8 +17,11 @@ bf = BasicFunctions(
                  tool='Hydra')
 
 fib_microscope, fib_settings = bf.connect_to_microscope()
-imaging = Imaging(fib_microscope=fib_microscope, beam='electron', bf=bf)
+#imaging = Imaging(fib_microscope=fib_microscope, beam='electron', bf=bf)
 
+gis = GisSputterAutomation(fib_microscope=fib_microscope, grid_number=1)
+gis.setup_sputtering()
+gis.setup_gis()
 #eucentric = EucentricHeight(fib_microscope=fib_microscope, bf=bf)
 
 #eucentric.eucentric_height_tilt_series(z_shifts=[-1.0e-5, -0.5e-5, 0.0e-5, +0.5e-5],
@@ -25,8 +29,8 @@ imaging = Imaging(fib_microscope=fib_microscope, beam='electron', bf=bf)
 #                                                0.0, +5.0, +10.0])
 
 
-_ = imaging.acquire_image()
-imaging.fast_acquire(200, line_acquisition=True)
+#_ = imaging.acquire_image()
+#imaging.fast_acquire(200, line_acquisition=True)
 # parameters_dict = {
 #                      'hfw': [300.0e-6, 400.0e-6, 500.0e-6, 600.0e-6],
 #                      'current': [1e-12, 1e-12, 1e-11]

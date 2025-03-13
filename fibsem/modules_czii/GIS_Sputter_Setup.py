@@ -4,6 +4,7 @@ import yaml
 import os
 from pathlib import Path
 import numpy as np
+import time
 
 class GisSputterAutomation:
 
@@ -35,14 +36,35 @@ class GisSputterAutomation:
 
     def setup_sputtering(self):
         #self.fib_microscope.move_stage_absolute(self.retrieve_stage_position(self.grid_number, 'sputter'))
-        pt_needle = self.fib_microscope.list_all_gis_ports()
-        print(pt_needle)
-        #needle = self.fib_microscope.get_gis_port(pt_needle)
-        #needle.insert()
+        #self.fib_microscope.connection.gas.list_all_gis_ports()
+        pt_needle = self.fib_microscope.connection.gas.get_gis_port('µSputter')
+        try:
+            pt_needle.insert()
+            time.sleep(5)
+            pt_needle.retract()
+        except Exception as e:
+            print(f"The sputter process failed because of {e}.")
+            pt_needle.retract()
 
-    def setup_gis(self, gri):
+    def setup_gis(self, time):
         #self.fib_microscope.move_stage_absolute(self.retrieve_stage_position(self.grid_number, 'gis'))
-        print(self.fib_microscope.list_all_multichem_ports())
-
+        multichem_needle = self.fib_microscope.connection.gas.get_multichem()
+        print(dir(multichem_needle))
+        #print(multichem_needle.list_all_gases())
+        #print(multichem_needle.turn_heater_on('CRYO Pt'))
+        print(multichem_needle.get_temperature('CRYO Pt '))
+        try:
+            if multichem_needle.state == 'Retracted':
+                #multichem_needle.insert()
+                print('Needle retracted')
+            #multichem_needle.turn_heater_on('CRYO Pt ')
+            #multichem_needle.open()
+            #multichem_needle.open()
+            #time.sleep(time)
+            #multichem_needle.retract()
+        except Exception as e:
+            print(f"The GIS layer failed because of {e}.")
+            if multichem_needle.state == 'Inserted':
+                multichem_needle.retract()
 
 

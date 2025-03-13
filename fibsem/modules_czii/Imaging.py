@@ -135,19 +135,17 @@ class Imaging:
                                                                             width=1.0,
                                                                             height=float(1/image_resolution[1]))
             #To use fast readout switch to ThermoFisher
-            self.fib_microscope.connection.beams.electron_beam.scanning.mode.set_reduced_area = \
-                (self.imaging_settings.reduced_area.top,
-                 self.imaging_settings.reduced_area.left,
-                 self.imaging_settings.reduced_area.width,
-                 self.imaging_settings.reduced_area.height)
-            self.fib_microscope.connection.beams.electron_beam.beam_current.value = self.imaging_settings.current
+            self.fib_microscope.connection.beams.electron_beam.scanning.mode.set_reduced_area(0.25, 0.25, 0.75, 0.75)
+            #     (self.imaging_settings.reduced_area.top,
+            #      self.imaging_settings.reduced_area.left,
+            #      self.imaging_settings.reduced_area.width,
+            #      self.imaging_settings.reduced_area.height)
+            #self.fib_microscope.connection.beams.electron_beam.beam_current.value = self.beam_settings.current
             self.fib_microscope.connection.beams.electron_beam.high_voltage.value = self.beam_settings.voltage
             self.fib_microscope.connection.beams.electron_beam.horizontal_field_width.value = self.beam_settings.hfw
-            self.fib_microscope.connection.beams.electron_beam.scanning.resolution.value = (
-                self.fib_microscope.connection.ScanningResolution.PRESET_1536x1024)
+            self.fib_microscope.connection.beams.electron_beam.scanning.resolution.value = '1024x884'
             self.fib_microscope.connection.beams.electron_beam.scanning.dwell_time.value = self.imaging_settings.dwell_time
-            settings = self.fib_microscope.connection.GetImageSettings(wait_for_frame=True)
-            image = self.fib_microscope.connection.microscope.imaging.get_image(settings)
+            image = self.fib_microscope.connection.imaging.get_image(self.fib_microscope.connection.GetImageSettings(wait_for_frame=True))
             now = datetime.now()
             ms = now.strftime("%f")[:3]
             array_timeseries = [image.data[0, :]]

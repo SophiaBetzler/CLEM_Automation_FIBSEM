@@ -58,7 +58,7 @@ class Imaging:
         if autofocus is True and fib_settings is None:
             raise ValueError("optional_input is required when use_optional is True")
         if beam_type is not None:
-            self.update_beam_settings(beam_type)
+            imaging_settings, imaging_settings_dict = self.update_beam_settings(beam_type)
         else:
             imaging_settings = self.imaging_settings
             beam_settings = self.beam_settings
@@ -78,8 +78,8 @@ class Imaging:
                                 beam_type=self.beam_type)
             self.fib_microscope.set_beam_settings(self.beam_settings)
         try:
-            if autofocus is True:
-                calibration.auto_focus_beam(self.fib_microscope, fib_settings, self.beam_type)
+            if autofocus is True and fib_settings is not None:
+                calibration.auto_focus_beam(self.fib_microscope, fib_settings, getattr(structures.BeamType, beam_type.upper()))
             image = acquire.new_image(self.fib_microscope, imaging_settings)
             plt.imshow(image.data, cmap='gray')
             plt.show()

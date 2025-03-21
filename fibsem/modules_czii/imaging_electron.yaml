@@ -13,6 +13,6 @@ autogamma: False
 drift_correction: False
 frame_integration: 1
 line_integration: 1
-reduced_area: {'top': 0.2, 'left': 0.8, 'width':0.6, 'height': !calc "1/1024"}
+reduced_area: null
 save: True
 

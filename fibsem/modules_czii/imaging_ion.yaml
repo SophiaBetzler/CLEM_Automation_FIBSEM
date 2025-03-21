@@ -7,7 +7,7 @@ working_distance: 16.50e-3
 scan_rotation: 180
 
 #imaging settings
-dwell_time: 1.0e-6
+dwell_time: 100.0e-9
 hfw: 150.0e-6
 resolution: [1536, 1024]
 autocontrast: False
@@ -15,5 +15,5 @@ autogamma: False
 drift_correction: False
 frame_integration: 1
 line_integration: 1
-reduced_area: {'top': 0.0, 'left': 0.0, 'width':1.0, 'height': 1.0}
+reduced_area: null
 save: True

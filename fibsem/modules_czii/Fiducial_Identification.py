@@ -15,8 +15,7 @@ class FiducialID:
     fib_microscope: the fib_microscope object created in the Basic_Functions class
     beam: either 'ion' or 'electron'
     """
-    def __init__(self, bf, imaging, number_fiducials, fib_settings):
-        self.number_fiducials = number_fiducials
+    def __init__(self, bf, imaging, fib_settings):
         self.imaging = imaging
         self.fib_microscope = self.imaging.fib_microscope
         self.beam = self.imaging.beam
@@ -33,42 +32,46 @@ class FiducialID:
         """
         Image acquisition.
         """
-        imaging = Imaging(bf=self.bf, fib_microscope=self.fib_microscope, beam=self.beam, autofocus=True,
-                          fib_settings=self.fib_settings)
-        imaging.acquire_image(hfw=hfw, folder_path=self.temp_folder_path, save=True)
+        imaging = Imaging(bf=self.bf, fib_microscope=self.fib_microscope, beam=self.beam)
+        imaging.acquire_image(hfw=hfw, folder_path=self.temp_folder_path, save=True, autofocus=True,
+                              fib_settings=self.fib_settings)
 
-    def fiducial_identification(self):
+    def fiducial_identification(self, number_fiducials):
         """
         Function to identify the fiducials in the images. It is iterative at lower and higher
-        magnification.
+        magnification, by connecting to the ML scripts. The ML scripts returns the correct stage position required
+        to move either the fiducial or the center between the two fiducials into the center of the image.
+        number_fiducials: currently 1 or 2.
         """
-        self.data_generation(hfw=150e-6)
+        if number_fiducials == 1:
+            hfw_1 = 150e-6
+            hfw_2 = 80e-6
+        elif number_fiducials == 2:
+            hfw_1 = 300e-6
+            hfw_2 = 150e-6
+        else:
+            hfw_1 = 300e-6
+            hfw_2 = 150e-6
+
+        self.data_generation(hfw=hfw_1)
         self.bf.execute_external_script(script='Identify_Fiducial_Remote.py',
                                         dir_name='Ultralytics',
-                                        parameter=self.number_fiducials)
+                                        parameter=number_fiducials)
 
         while not os.path.exists(os.path.join(self.temp_folder_path, 'fiducial_id_result.json')):
-            time.sleep(1)
+            time.sleep(0.1)
 
         with open(os.path.join(self.temp_folder_path, 'fiducial_id_result.json'), 'r') as file:
             required_move = json.load(file)
 
         os.remove(os.path.join(self.temp_folder_path, 'fiducial_id_result.json'))
 
-        print(self.fib_microscope.get_stage_position())
-        print(f"The move required in X direction is {required_move['moveX']}, the move in Y direction is {required_move['moveY']}")
         self.fib_microscope.stable_move(required_move['moveX'], required_move['moveY'], self.beam_type)
-        print(self.fib_microscope.get_stage_position())
-        if self.number_fiducials == 1:
-            hfw_2 = 80e-6
-        elif self.number_fiducials == 2:
-            hfw_2 = 150e-6
-        else:
-            hfw_2 = 300e-6
+
         self.data_generation(hfw=hfw_2)
         self.bf.execute_external_script('Identify_Fiducial_Remote.py',
                                         'Ultralytics',
-                                        parameter=self.number_fiducials)
+                                        parameter=number_fiducials)
 
         while not os.path.exists(os.path.join(self.temp_folder_path, 'fiducial_id_result.json')):
             time.sleep(1)
@@ -78,9 +81,5 @@ class FiducialID:
 
         os.remove(os.path.join(self.temp_folder_path, 'fiducial_id_result.json'))
 
-        print(self.fib_microscope.get_stage_position())
-        print(
-            f"The move required in X direction is {required_move['moveX']}, the move in Y direction is {required_move['moveY']}")
         self.fib_microscope.stable_move(required_move['moveX'], required_move['moveY'], self.beam_type)
-        print(self.fib_microscope.get_stage_position())
 

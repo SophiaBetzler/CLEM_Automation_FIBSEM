@@ -15,16 +15,4 @@ milling:
     preset: '2keV; 1nA'
     acquire_images: False
 
-patterns:
-  fiducial:
-    height: 10.0e-6
-    width: 1.0e-6
-    depth: 5.0e-6
-    rotation: 45.0
-  rectangle:
-    height: 30.0e-6
-    width:  20.0e-6
-    depth: 6.0e-6
-    rotation: 0.0
-    centreX: 0.0e-6
-    centreY: -10.0e-6
+

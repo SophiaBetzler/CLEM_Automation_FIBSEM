@@ -1,0 +1,24 @@
+- fiducial:
+    height: 10.0e-6
+    width: 1.0e-6
+    depth: 5.0e-6
+    rotation: 45.0
+    centerX: 0.0
+    centerY: 0.0
+    milling_current: 1.0e-9
+    milling_voltage: 30000
+    hfw: 600.0e-6
+    application_file: "Si"
+    patterning_mode: "Serial"
+
+- trench:
+    height: 20.0e-6
+    width:  30.0e-6
+    depth: 6.0e-6
+    rotation: 0.0
+    spacing: 10.0e-6
+    milling_current: 60.0e-9
+    milling_voltage: 30000
+    hfw: 600.0e-6
+    application_file: "Si"
+    patterning_mode: "Serial"

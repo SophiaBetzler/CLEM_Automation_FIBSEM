@@ -51,6 +51,7 @@ class BasicFunctions:
         This function executes a 'script.py' function from a different directory.
         script: script name as str
         dir_name: dir_name as str
+        parameter: additional parameters needed by the script
         """
         if self.pc_type == 'mac':
             python_path = os.path.join(self.python_root, dir_name, 'venv/bin/python')
@@ -93,7 +94,7 @@ class BasicFunctions:
             error_message(f"Connection to microscope failed: {e}")
             sys.exit()
 
-    def read_from_yaml(self, filename):
+    def read_from_yaml(self, filename, imaging_settings_yaml=True):
         """
         User generated yaml file with the basic settings for imaging with the ion/electron beam.
         """
@@ -110,8 +111,11 @@ class BasicFunctions:
         for key in dictionary:
             if key == 'scan_rotation':
                 dictionary[key] = np.deg2rad(dictionary[key])
-        imaging_settings = structures.ImageSettings.from_dict(dictionary)
-        return imaging_settings, dictionary
+        if imaging_settings_yaml is True:
+            imaging_settings = structures.ImageSettings.from_dict(dictionary)
+            return imaging_settings, dictionary
+        else:
+            return dictionary
 
     def read_from_dict(self, filename):
         """
@@ -157,3 +161,15 @@ class BasicFunctions:
         if 'scan_rotation' in dictionary:
             dictionary['scan_rotation'] = np.deg2rad(float(dictionary['scan_rotation']))
         return dictionary
+
+    def stage_position_within_limits(self, limit, current_position, target_position):
+        """
+        Verifies that the stage moved as expected and that the current position is reasonably close to the target
+        position.
+        limit: limit in percent
+        current_position: FibsemStagePosition
+        target_position: FibsemStagePosition
+        """
+        current = [current_position.x, current_position.y, current_position.z, current_position.t, current_position.r]
+        target = [target_position.x, target_position.y, target_position.z, target_position.t, target_position.r]
+        return all(abs(cur - tar) <= limit/100 * tar for cur, tar in zip(current, target))

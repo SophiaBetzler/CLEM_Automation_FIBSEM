@@ -2,7 +2,7 @@ import logging
 import os
 import sys
 from copy import deepcopy
-
+from typing import Optional
 import numpy as np
 from psygnal import Signal
 
@@ -24,6 +24,7 @@ from fibsem.structures import (
     FibsemStagePosition,
     FibsemUser,
     ImageSettings,
+    FibsemRectangle,
     MicroscopeState,
     MillingState,
     Point,
@@ -257,6 +258,41 @@ class OdemisMicroscope(FibsemMicroscope):
     def disconnect(self):
         pass
 
+    def get_orientation(self, orientation: str) -> str:
+        """Get the current orientation of the microscope."""
+        return ThermoMicroscope.get_orientation(self, orientation)
+
+    def get_stage_orientation(self, stage_position: Optional[FibsemStagePosition] = None) -> str:
+        """Get the stage position for the specified orientation."""
+        return ThermoMicroscope.get_stage_orientation(self)
+
+    def move_flat_to_beam(self, beam_type: BeamType, _safe: bool = True) -> None:
+        # new style
+        omap = {BeamType.ELECTRON: "SEM", BeamType.ION: "FIB"}
+        pos = self.get_orientation(omap[beam_type])
+        rotation, tilt = pos.r, pos.t
+        stage_orientation = self.get_stage_orientation()
+
+        # updated safe rotation move
+        logging.info(f"moving flat to {beam_type.name}")
+        stage_position = FibsemStagePosition(r=rotation, t=tilt, coordinate_system="Raw")
+
+        # imitate compucentric movements
+        if (stage_orientation in ["SEM", "MILLING"] and beam_type == BeamType.ION) or \
+           (stage_orientation == "FIB" and beam_type == BeamType.ELECTRON):
+
+            current_stage_position = self.get_stage_position()
+            stage_position.x = -current_stage_position.x
+            stage_position.y = -current_stage_position.y
+            stage_position.z =  current_stage_position.z
+
+        logging.debug({"msg": "move_flat_to_beam", "stage_position": stage_position.to_dict(), "beam_type": beam_type.name})
+
+        if _safe:
+            self.safe_absolute_stage_movement(stage_position)
+        else:
+            self.move_stage_absolute(stage_position)
+
     def acquire_chamber_image(self) -> FibsemImage:
         pass
 
@@ -278,14 +314,28 @@ class OdemisMicroscope(FibsemMicroscope):
 
         # set imaging settings
         # TODO: this is a change in behaviour..., restore the previous conditions or use GrabFrameSettings?
+        # This is the source of the error with square resolutions. 
+        # can't set square resolution, but can acquire an image with square
+        frame_settings = None
+        tmp_resolution = None
+        resolution = image_settings.resolution
+        if resolution[0] == resolution[1]:
+            # can't set square resolution directly
+            frame_settings = {"resolution": f"{resolution[0]}x{resolution[1]}"}
+            tmp_resolution = resolution
+            image_settings.resolution = self.get("resolution", beam_type=beam_type)
         self.set_imaging_settings(image_settings)
 
         # acquire image
-        image, _md = self.connection.acquire_image(channel=channel)
+        image, _md = self.connection.acquire_image(channel=channel, frame_settings=frame_settings)
 
         # restore to full frame imaging
         if image_settings.reduced_area is not None:
             self.connection.set_scan_mode("full_frame", channel=channel, value=None)
+
+        # restore the previous resolution
+        if tmp_resolution is not None:
+            image_settings.resolution = tmp_resolution
 
         # create metadata
         # TODO: retrieve the full image metadata from image md, rather than reconstruct
@@ -309,8 +359,13 @@ class OdemisMicroscope(FibsemMicroscope):
     def last_image(self, beam_type: BeamType) -> FibsemImage:
         pass
 
-    def autocontrast(self, beam_type: BeamType) -> None:
-        self.connection.run_auto_contrast_brightness(beam_type_to_odemis[beam_type])
+    def autocontrast(self, beam_type: BeamType, reduced_area: FibsemRectangle = None) -> None:
+        channel = beam_type_to_odemis[beam_type]
+        if reduced_area is not None:
+            self.connection.set_reduced_area_scan_mode(channel, **reduced_area.to_dict())
+        self.connection.run_auto_contrast_brightness(channel=channel)
+        if reduced_area is not None:
+            self.connection.set_full_frame_scan_mode(channel)
 
     def auto_focus(self, beam_type: BeamType) -> None:
         self.connection.run_auto_focus(beam_type_to_odemis[beam_type])
@@ -441,11 +496,6 @@ class OdemisMicroscope(FibsemMicroscope):
         # beam properties
         if key == "working_distance":
             self.connection.set_working_distance(value, channel)
-            try: # TODO: remove linking once testing is done
-                if beam_type is BeamType.ELECTRON:
-                    self.set("stage_link", True)  # link the specimen stage for electron
-            except Exception as e:
-                logging.info(f"Failed to link stage: {e}")
             logging.info(f"{beam_type.name} working distance set to {value} m.")
             return
         if key == "current":
@@ -469,7 +519,7 @@ class OdemisMicroscope(FibsemMicroscope):
             logging.info(f"{beam_type.name} scan rotation set to {value} radians.")
             return
         if key == "shift":
-            self.connection.set_beam_shift(-value.x, value.y, channel)
+            self.connection.set_beam_shift(value.x, value.y, channel)
             logging.info(f"{beam_type.name} shift set to {value}.")
             return
         if key == "stigmation":
@@ -504,9 +554,9 @@ class OdemisMicroscope(FibsemMicroscope):
             logging.info(f"{beam_type.name} beam turned {'on' if value else 'off'}.")
             return
         if key == "blanked":
-            self.connection.beam_blank(
+            self.connection.blank_beam(
                 channel
-            ) if value else self.connection.beam_unblank(channel)
+            ) if value else self.connection.unblank_beam(channel)
             logging.info(
                 f"{beam_type.name} beam {'blanked' if value else 'unblanked'}."
             )
@@ -546,6 +596,13 @@ class OdemisMicroscope(FibsemMicroscope):
                 )
             return
 
+        if key == "spot_mode":
+            self.connection.set_spot_scan_mode(channel=channel, x=value.x, y=value.y)
+            return
+
+        if key == "full_frame":
+            self.connection.set_full_frame_scan_mode(channel)
+            return
         # system properties
         if key == "beam_enabled":
             if beam_type is BeamType.ELECTRON:
@@ -675,6 +732,10 @@ class OdemisMicroscope(FibsemMicroscope):
             )[
                 "range"
             ]  # TODO: we need the list of choices, not the range (this should be an list)
+            # xenon
+            # values = [1.0e-12, 3.0e-12, 10e-12, 30e-12, 0.1e-9, 0.3e-9, 1e-9, 4e-9, 15e-9, 60e-9]
+            # argon
+            # values = [1.0e-12, 6.0e-12, 20e-12, 60e-12, 0.2e-9, 0.74e-9, 2.0e-9, 7.4e-9, 28.0e-9, 120.0e-9]
         if key == "plasma_gas":
             values = ["Argon", "Oxygen", "Xenon"]
 
@@ -709,74 +770,23 @@ class OdemisMicroscope(FibsemMicroscope):
         pdict = stage_position_to_odemis_dict(position)
         f = self.stage.moveAbs(pdict)
         f.result()
+        # TODO: implement compucentric rotation
 
     def move_stage_relative(self, position: FibsemStagePosition) -> None:
         pdict = stage_position_to_odemis_dict(position)
         f = self.stage.moveRel(pdict)
         f.result()
 
-    # TODO: consolidate methods from ThermoMicroscope
     def stable_move(
         self, dx: float, dy: float, beam_type: BeamType, static_wd: bool = False
     ) -> FibsemStagePosition:
         return ThermoMicroscope.stable_move(self, dx=dx, dy=dy, beam_type=beam_type, static_wd=static_wd)
 
     def vertical_move(
-        self, dy: float, dx: float = 0.0, static_wd: bool = True, use_perspective: bool = True
+        self, dy: float, dx: float = 0.0, static_wd: bool = True
     ) -> FibsemStagePosition:
         """Move the stage vertically by the specified amount."""
-        # TODO: migrate once new vmove changes are implemented
-        # get current working distance, to be restored later
-        wd = self.get("working_distance", BeamType.ELECTRON)
-
-        # adjust for scan rotation
-        scan_rotation = self.get("scan_rotation", BeamType.ION)
-        if np.isclose(scan_rotation, np.pi):
-            dx *= -1.0
-            dy *= -1.0
-
-        # TODO: implement perspective correction
-        PERSPECTIVE_CORRECTION = 0.9
-        z_move = dy
-        if use_perspective:
-            z_move = (
-                dy
-                / np.cos(np.deg2rad(90 - self.system.ion.column_tilt))
-                * PERSPECTIVE_CORRECTION
-        )  # TODO: MAGIC NUMBER, 90 - fib tilt
-
-        # manually calculate the dx, dy, dz
-        theta = self.get_stage_position().t # rad
-        dy = z_move * np.sin(theta)
-        dz = z_move / np.cos(theta)
-        stage_position = FibsemStagePosition(x=dx, y=dy, z=dz)
-        self.move_stage_relative(stage_position)
-
-
-        if static_wd:
-            self.set(
-                "working_distance",
-                self.system.electron.eucentric_height,
-                BeamType.ELECTRON,
-            )
-            self.set("working_distance", self.system.ion.eucentric_height, BeamType.ION)
-        else:
-            self.set("working_distance", wd, BeamType.ELECTRON)
-
-        # logging
-        logging.debug(
-            {
-                "msg": "vertical_move",
-                "dy": dy,
-                "dx": dx,
-                "static_wd": static_wd,
-                "working_distance": wd,
-                "scan_rotation": scan_rotation,
-                "position": stage_position.to_dict(),
-            }
-        )
-
-        return self.get_stage_position()
+        return ThermoMicroscope.vertical_move(self, dy=dy, dx=dx, static_wd=static_wd)
 
     def _y_corrected_stage_movement(
         self, expected_y: float, beam_type: BeamType
@@ -795,8 +805,11 @@ class OdemisMicroscope(FibsemMicroscope):
                                                     beam_type=beam_type, 
                                                     base_position=base_position)
 
+    def _safe_rotation_movement(self, stage_position: FibsemStagePosition) -> None:
+        return ThermoMicroscope._safe_rotation_movement(self, stage_position)
+
     def safe_absolute_stage_movement(self, position: FibsemStagePosition) -> None:
-        self.move_stage_absolute(position)
+        return ThermoMicroscope.safe_absolute_stage_movement(self, position)
 
     def live_imaging(self, beam_type: BeamType) -> None:
         pass
@@ -815,6 +828,7 @@ class OdemisMicroscope(FibsemMicroscope):
 
         # select the correct pattern function
         create_pattern_function = self.connection.create_rectangle
+        self.connection.set_default_application_file("Si")
         if pattern_settings.cross_section is CrossSectionPattern.CleaningCrossSection:
             create_pattern_function = self.connection.create_cleaning_cross_section
             self.connection.set_default_application_file("Si-ccs")

@@ -73,5 +73,4 @@ def main():
             conn, _ = s.accept()
             threading.Thread(target=handle_client, args=(conn,)).start()
 
-print('Test is running.')
 main()

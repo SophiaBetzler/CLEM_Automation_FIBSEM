@@ -52,7 +52,7 @@ def add_odemis_path():
         return config
 
     #odemis_path = "home/development/odemis"
-    odemis_path = "odemis/install/linux/etc/odemis.conf"
+    odemis_path = "/etc/odemis.conf"
     config = parse_config(odemis_path)
     sys.path.append(f"{config['DEVPATH']}/odemis/src")  # dev version
     sys.path.append("/usr/lib/python3/dist-packages")  # release version + pyro4

@@ -15,7 +15,8 @@ class OdemisControl:
         self.open_acquisition = open_acquisition
 
     def insert_objective(self):
-        Focuser = self.model.getComponent(role='filter')
+        print('I made to here.')
+        Focuser = self.model.getComponent(role='focus')
         print(Focuser.__dict__)
 
     def load_tif_as_array(self, path):

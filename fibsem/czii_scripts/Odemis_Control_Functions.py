@@ -1,5 +1,5 @@
 import tifffile
-from fibsem import microscopes
+from fibsem.microscopes import odemis_microscope
 
 class OdemisControl:
 
@@ -7,7 +7,7 @@ class OdemisControl:
         self.conn = self.connect_to_odemis()
 
     def connect_to_odemis(self):
-        microscopes.add_odemis_path()
+        odemis_microscope.add_odemis_path()
         from odemis import app_model
         from odemis.acy.stream import FIBStream, SEMStream
         from odemis.util.dataio import open_acquisition

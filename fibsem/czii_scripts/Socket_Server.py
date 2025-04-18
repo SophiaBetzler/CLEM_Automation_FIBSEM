@@ -10,6 +10,12 @@ from Odemis_Control_Functions import *
 
 odemis = OdemisControl()
 
+def insert_objective():
+    try:
+        odemis.insert_objective()
+    except Exception as e:
+        print(f"failed because of {e}")
+
 def send_tiff(conn, args):
     if not args:
         print("No path provided.")
@@ -38,6 +44,7 @@ def add(conn, args):
 FUNCTIONS = {
     "greet": greet,
     "add": add,
+    "insert_objective": insert_objective,
     "send_tiff": send_tiff
 }
 

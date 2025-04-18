@@ -8,9 +8,13 @@ class OdemisControl:
 
     def connect_to_odemis(self):
         odemis_microscope.add_odemis_path()
-        from odemis import app_model
+        from odemis import model
         from odemis.acy.stream import FIBStream, SEMStream
         from odemis.util.dataio import open_acquisition
+
+    def insert_objective(self):
+        Focuser = model.getComponent(role='filter')
+        print(Focuser.__dict__)
 
 
     def load_tif_as_array(path):

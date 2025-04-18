@@ -8,8 +8,7 @@ import pickle
 import os
 from Odemis_Control_Functions import *
 
-
-
+odemis = OdemisControl()
 
 def send_tiff(conn, args):
     if not args:
@@ -21,7 +20,7 @@ def send_tiff(conn, args):
         conn.sendall((0).to_bytes(8, 'big'))
         return
     try:
-        image_dict = load_tif_as_array(path)
+        image_dict = odemis.load_tif_as_array(path)
         data = pickle.dumps(image_dict)
         conn.sendall(len(data).to_bytes(8, 'big'))
         conn.sendall(data)

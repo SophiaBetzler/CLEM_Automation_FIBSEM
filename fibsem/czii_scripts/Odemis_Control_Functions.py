@@ -17,7 +17,7 @@ class OdemisControl:
     def insert_objective(self):
         print('I made to here.')
         Focuser = self.model.getComponent(role='focus')
-        print(Focuser.__dict__)
+        print(Focuser.position.value)
 
     def load_tif_as_array(self, path):
         image_tif = tifffile.TiffFile(path)

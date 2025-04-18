@@ -10,7 +10,7 @@ from Odemis_Control_Functions import *
 
 odemis = OdemisControl()
 
-def insert_objective():
+def insert_objective(conn, args):
     try:
         odemis.insert_objective()
     except Exception as e:

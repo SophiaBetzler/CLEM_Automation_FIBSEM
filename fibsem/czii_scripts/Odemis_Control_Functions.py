@@ -4,20 +4,21 @@ from fibsem.microscopes import odemis_microscope
 class OdemisControl:
 
     def __init__(self):
-        self.conn = self.connect_to_odemis()
-
-    def connect_to_odemis(self):
         odemis_microscope.add_odemis_path()
         from odemis import model
-        from odemis.acy.stream import FIBStream, SEMStream
+        from odemis.acq.stream import FIBStream, SEMStream
         from odemis.util.dataio import open_acquisition
 
+        self.model = model
+        self.FIBStream = FIBStream
+        self.SEMStream = SEMStream
+        self.open_acquisition = open_acquisition
+
     def insert_objective(self):
-        Focuser = model.getComponent(role='filter')
+        Focuser = self.model.getComponent(role='filter')
         print(Focuser.__dict__)
 
-
-    def load_tif_as_array(path):
+    def load_tif_as_array(self, path):
         image_tif = tifffile.TiffFile(path)
         array = image_tif.asarray()
         print(image_tif.pages[0].tags)

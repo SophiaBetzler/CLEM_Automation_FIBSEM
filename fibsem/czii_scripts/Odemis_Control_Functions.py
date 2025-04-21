@@ -21,13 +21,16 @@ class OdemisControl:
 
     def insert_objective(self):
         print('I made to here.')
-        light = self.model.getComponent(role='light')
-        lens = self.model.getComponent(role='lens')
         print(self.focuser.position.value)
         print(self.focuser.__dict__)
         for comp in self.model.getComponents():
             print(f"{comp.name} (role: {comp.role}).")
         print(self.focuser.position.value)
+
+    def acquire_FL_image(self):
+        with open_acquisition(self.camera) as acq:
+            image = acq.getFrame()
+            print(f"Image shape: {image.shape}")
 
     def load_tif_as_array(self, path):
         image_tif = tifffile.TiffFile(path)

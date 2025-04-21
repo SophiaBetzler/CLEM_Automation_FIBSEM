@@ -28,7 +28,11 @@ class OdemisControl:
         print(self.focuser.position.value)
 
     def acquire_FL_image(self):
-        with open_acquisition(self.camera) as acq:
+        acq_params = {
+            'exposure_time': 0.05,  # in seconds
+            'binning': (2, 2),  # horizontal, vertical
+        }
+        with self.open_acquisition(self.camera, mode='camera') as acq:
             image = acq.getFrame()
             print(f"Image shape: {image.shape}")
 

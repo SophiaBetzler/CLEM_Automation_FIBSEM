@@ -18,6 +18,8 @@ class OdemisControl:
         print('I made to here.')
         Focuser = self.model.getComponent(role='focus')
         print(Focuser.position.value)
+        Focuser.position.value[-0.010]
+        print(Focuser.position.value)
 
     def load_tif_as_array(self, path):
         image_tif = tifffile.TiffFile(path)

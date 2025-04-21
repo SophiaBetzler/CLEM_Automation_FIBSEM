@@ -13,13 +13,21 @@ class OdemisControl:
         self.FIBStream = FIBStream
         self.SEMStream = SEMStream
         self.open_acquisition = open_acquisition
+        self.focuser = self.model.getComponent(role='focus')
+        self.light = self.model.getComponent(role='light')
+        self.lens = self.model.getComponent(role='lens')
+        self.filter_wheel = self.model.getComponent(role='filter')
+        self.camera = self.model.getComponent(role='ccd')
 
     def insert_objective(self):
         print('I made to here.')
-        Focuser = self.model.getComponent(role='focus')
-        print(Focuser.position.value)
-        Focuser.position.value[-0.010]
-        print(Focuser.position.value)
+        light = self.model.getComponent(role='light')
+        lens = self.model.getComponent(role='lens')
+        print(self.focuser.position.value)
+        print(self.focuser.__dict__)
+        for comp in self.model.getComponents():
+            print(f"{comp.name} (role: {comp.role}).")
+        print(self.focuser.position.value)
 
     def load_tif_as_array(self, path):
         image_tif = tifffile.TiffFile(path)

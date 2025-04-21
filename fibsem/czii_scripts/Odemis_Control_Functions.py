@@ -1,5 +1,9 @@
 import tifffile
+import inspect
 from fibsem.microscopes import odemis_microscope
+import matplotlib
+matplotlib.use('TkAgg')
+import matplotlib.pyplot as plt
 
 class OdemisControl:
 
@@ -8,8 +12,10 @@ class OdemisControl:
         from odemis import model, acq
         from odemis.acq.stream import FIBStream, SEMStream
         from odemis.util.dataio import open_acquisition
-        self.model = model
+        import odemis.acq.stream as stream
+        self.stream = stream
         self.acq = acq
+        self.model = model
         self.FIBStream = FIBStream
         self.SEMStream = SEMStream
         self.open_acquisition = open_acquisition
@@ -27,26 +33,74 @@ class OdemisControl:
             print(f"{comp.name} (role: {comp.role}).")
         print(self.focuser.position.value)
 
-    def acquire_FL_image(self):
-
-        stream = self.acq.stream.OpticalStream()
-
-        stream.detector.value = self.camera  # Link the hardware
-        stream.tint.value = 0.1  # Integration time in seconds
-        stream.excitation.value = "DAPI"  # Or appropriate enum/string
-        stream.emission.value = "blue"
-
-        root = self.model.getRootComponent()
-        all_components = set(self.model.getHwComponents(root))
-        obs = self.acq.acqmng.SettingsObserver(microscope=root, components=all_components)
-
-        future = self.acq.acqmng.acquire([stream], settings_obs=obs)
-
+    def acquire_fl_image(self):
+        self.camera.exposureTime.value = 0.1
+        self.camera.binning.value = (4, 4)
+        fl_stream = self.stream.FluoStream(name='FL',
+                                      detector=self.camera,
+                                      emitter=self.light,
+                                      em_filter=self.filter_wheel,
+                                      dataflow=self.camera.data
+                                      )
+        future = self.acq.acqmng.acquire([fl_stream])
         data, err = future.result()
+        plt.imshow(data[0])
+        plt.show()
+        meta_data = {'fl_binning': self.camera.binning.value,
+                     'fl_exposure_time': self.camera.exposureTime.value}
+        print(meta_data)
         if err:
             print("Error during acquisition:", err)
         else:
             print("Image acquired. Data shape:", data[0].shape)
+
+    def acquire_fl_tileset(self):
+        from self.acq.stitching import WEAVER_MEAN, REGISTER_IDENTITY
+        self.camera.exposureTime.value = 0.1
+        self.camera.binning.value = (4, 4)
+        fl_stream = self.stream.FluoStream(name='FL',
+                                           detector=self.camera,
+                                           emitter=self.light,
+                                           em_filter=self.filter_wheel,
+                                           dataflow=self.camera.data
+                                           )
+        zleverls = [0.0, 0.2e-6, 0.4e-6, 0.6e-6]
+        future = self.acq.stitching.acquireOverview(streams=[fl_stream],
+                                                    stage=stage_component,
+                                                    areas=[(x0, y0, x1, y1)], #tile area in meters
+                                                    focus=z_actuator,
+                                                    detector=detector_component,
+                                                    overlap=0.1,
+                                                    settings_obs=settings_observer,
+                                                    log_path='/temp/zstack_test.json',
+                                                    weaver=WEAVER_MEAN,
+                                                    registrat=REGISTER_IDENTITY,
+                                                    zlevels=zlevels,
+                                                    focusing_metod=FocusingMethod.MAX_INTENSITY_PROJECTION,
+                                                    use_autfocus=False,
+                                                    focus_points_dist=50-6)
+
+    def acquire_fl_stack(self):
+        z_positions = [0.0, 0.2e-6, 0.4e-6, 0.6e-6]
+        self.camera.exposureTime.value = 0.1
+        self.camera.binning.value = (4, 4)
+        fl_stream = self.stream.FluoStream(name='FL',
+                                           detector=self.camera,
+                                           emitter=self.light,
+                                           em_filter=self.filter_wheel,
+                                           dataflow=self.camera.data
+                                           )
+        future = self.acq.acqmng.acquireZStack([fl_stream],
+                                               zlevels=z_positions)
+
+        data, err = future.result()
+        plt.imshow(data[0])
+        plt.show()
+        if err:
+            print("Error during acquisition:", err)
+        else:
+            print("Image acquired. Data shape:", data[0].shape)
+
 
     def load_tif_as_array(self, path):
         image_tif = tifffile.TiffFile(path)

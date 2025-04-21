@@ -16,6 +16,12 @@ def insert_objective(conn, args):
     except Exception as e:
         print(f"failed because of {e}")
 
+def acquire_fl_image(conn, args):
+    try:
+        odemis.acquire_fl_image()
+    except Exception as e:
+        print(f"failed because of {e}")
+
 def send_tiff(conn, args):
     if not args:
         print("No path provided.")
@@ -45,7 +51,8 @@ FUNCTIONS = {
     "greet": greet,
     "add": add,
     "insert_objective": insert_objective,
-    "send_tiff": send_tiff
+    "send_tiff": send_tiff,
+    "acquire_fl_image": acquire_fl_image,
 }
 
 def handle_client(conn):

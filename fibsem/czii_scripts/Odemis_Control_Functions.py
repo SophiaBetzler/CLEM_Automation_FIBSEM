@@ -31,11 +31,16 @@ class OdemisControl:
         print(self.focuser.__dict__)
         for comp in self.model.getComponents():
             print(f"{comp.name} (role: {comp.role}).")
+        self.focuser.position.value = -0.010
         print(self.focuser.position.value)
 
     def acquire_fl_image(self):
         self.camera.exposureTime.value = 0.1
-        self.camera.binning.value = (4, 4)
+        self.camera.binning.value = (2, 2)
+        print(self.filter_wheel.value)
+        print(self.light.value)
+        #self.filter_wheel.value = 10
+        #self.light.value = [0.0, 0.0, 0.0, 0.1]
         fl_stream = self.stream.FluoStream(name='FL',
                                       detector=self.camera,
                                       emitter=self.light,

@@ -1,5 +1,5 @@
 -   coordinate_system: RAW
-    name: grid1_trench_position
+    name: grid1_sem_topview
     r: -2.286298510029761
     t: 0.29669765745887133
     x: -0.00368525
@@ -13,14 +13,28 @@
     y: -0.0023315
     z: 0.03184661136831276
 -   coordinate_system: RAW
-    name: grid1_mapping_position
+    name: grid1_fib_topview
+    r: -90.0
+    t: +35.0
+    x: -10.720
+    y: +2.6720
+    z: +2.2116
+-   coordinate_system: RAW
+    name: grid1_sputter_position
     r: -2.286298510029761
     t: 0.29669765745887133
     x: -0.00368525
     y: -0.0023315
     z: 0.03184661136831276
 -   coordinate_system: RAW
-    name: grid2_trench_position
+    name: grid1_fl_position
+    r: -2.286298510029761
+    t: 0.29669765745887133
+    x: -0.00368525
+    y: -0.0023315
+    z: 0.03184661136831276
+-   coordinate_system: RAW
+    name: grid2_sem_topview
     r: -2.286298510029761
     t: 0.29669765745887133
     x: -0.00368525
@@ -34,7 +48,21 @@
     y: -0.0023315
     z: 0.03184661136831276
 -   coordinate_system: RAW
-    name: grid2_mapping_position
+    name: grid2_fib_topview
+    r: -90.0
+    t: +35.0
+    x: -10.720
+    y: +2.6720
+    z: +2.2116
+-   coordinate_system: RAW
+    name: grid2_sputter_position
+    r: -2.286298510029761
+    t: 0.29669765745887133
+    x: -0.00368525
+    y: -0.0023315
+    z: 0.03184661136831276
+-   coordinate_system: RAW
+    name: grid2_fl_position
     r: -2.286298510029761
     t: 0.29669765745887133
     x: -0.00368525

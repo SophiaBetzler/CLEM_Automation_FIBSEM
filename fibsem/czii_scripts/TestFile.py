@@ -23,9 +23,27 @@ for name in dir(stream):
     if inspect.isclass(obj) and issubclass(obj, stream.Stream):
         streams.append(obj)
 camera = model.getComponent(role='ccd')
-
+camera.binning.value = (2, 2)
 light = model.getComponent(role='light')
+dict_excitation = {
+    '375': 0,
+    '460': 1,
+    '454': 2,
+    '615': 3
+} # position in the list for the power intensity
+dict_emission = {
+    'pass-through': 0.08,
+    '500': 0.865498,
+    '580': 1.650796,
+    '663': 2.4361944
+} # wheel position in radians
+light.power.value[dict_excitation['375']] = 1.0
+light.power.value = [0.0, 0.0, 0.0, 0.0] # limit is [1.4, 0.78, 1.45, 0.85]
+
+print(light.power.value) # in W
 filter_wheel = model.getComponent(role='filter')
+
+print(filter_wheel.position.value)
 #obs = acq.acqmng.SettingsObserver(microscope=root, components=all_components)
 fl_stream = stream.FluoStream(name='FL',
                               detector=camera,

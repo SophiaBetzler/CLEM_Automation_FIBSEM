@@ -22,6 +22,7 @@ def connect_to_autoscript(tool='arctis'):
         else:
             print('No tool selected.')
         print("Connection establishment to Autoscript server...")
+        return microscope
     except Exception as e:
         print(f"Failed to establish a connection to the microscope: {e}")
 
@@ -35,6 +36,7 @@ class TriCoincidence:
     def define_roi(self):
         """
         Define a ROI in the fluorescence image which will be used to calculate the average.
+        This script will take the currently displayed image in the 3 view of XT as reference.
         """
         roi_coords = [None]  # Use a mutable object to capture updates
 

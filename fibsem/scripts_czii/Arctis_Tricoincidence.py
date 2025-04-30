@@ -118,8 +118,6 @@ class TriCoincidence:
                 else:
                     #Here I would like to turn on the flash!
                     print('Not yet implemented')
-                print(xdata)
-                print(ydata)
                 line.set_data(xdata, ydata)
                 ax.relim()  # Recompute the data limits based on current xdata/ydata
                 ax.autoscale_view()  # Update the view (zoom) to include new limits

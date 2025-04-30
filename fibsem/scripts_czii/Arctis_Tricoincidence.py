@@ -1,8 +1,7 @@
-"""
-Signed by Thermo Fisher Scientific
-EMTjGBbbF95caOFo8erdlg/7VYDuxy8g4cSZ8xjrbojTsPtv2dogxHHHd5Wlpr4W4/A67rC8nZ7Du5Ua6xSMqsJJaKiDxK81Z7EE8zymaKDuvQarKovYuqp6
-rMwLMFx8/l7kdQwwnZFfd2CgObp+TdAdiDLaPT1hJB88na/ycwh6Q08kovDUKlgOlM4b0SiEdcoMHHqt6UGEjv09JsCN4l2nksQhReUDSpiYCuRfHDA=
-"""
+import sys
+sys.path.append('C:\Program Files\Thermo Scientific Autoscript')
+sys.path.append('C:\Program Files\Enthought\Python\envs\AutoScript\Lib\site-packages')
+
 from autoscript_sdb_microscope_client import SdbMicroscopeClient
 from autoscript_sdb_microscope_client.enumerations import *
 from autoscript_sdb_microscope_client.structures import *
@@ -19,13 +18,12 @@ def connect_to_autoscript(tool='arctis'):
         if tool == 'arctis':
             microscope.connect("127.0.0.1")
         elif tool == 'hydra':
-            microscope.connect()
+            microscope.connect("192.168.0.1", 7520)
         else:
             print('No tool selected.')
-        microscope.authenticate()
         print("Connection establishment to Autoscript server...")
-    except:
-        print("Failed to establish a connection to the microscope")
+    except Exception as e:
+        print(f"Failed to establish a connection to the microscope: {e}")
 
 class TriCoincidence:
     def __init__(self, emission_color, excitation_color, tool, path):
@@ -34,23 +32,23 @@ class TriCoincidence:
         self.path = path
         self.microscope = connect_to_autoscript(tool=tool)
 
-
     def define_roi(self):
         """
-        Define a roi in the fluorescence image which will be used to calculate the average. This function grabs the image
-        currently visible in the active view of the microscope.
+        Define a ROI in the fluorescence image which will be used to calculate the average.
         """
+        roi_coords = [None]  # Use a mutable object to capture updates
+
         def onselect(eclick, erelease):
-            global roi_coords
             x1, y1 = int(eclick.xdata), int(eclick.ydata)
             x2, y2 = int(erelease.xdata), int(erelease.ydata)
             xmin, xmax = sorted([x1, x2])
             ymin, ymax = sorted([y1, y2])
-            roi_coords = (xmin, xmax, ymin, ymax)
+            roi_coords[0] = (xmin, xmax, ymin, ymax)
 
         def on_ok_clicked(event):
-            if roi_coords is not None:
-                print(f"Final ROI confirmed: x={roi_coords[0]}:{roi_coords[1]}, y={roi_coords[2]}:{roi_coords[3]}")
+            if roi_coords[0] is not None:
+                print(
+                    f"Final ROI confirmed: x={roi_coords[0][0]}:{roi_coords[0][1]}, y={roi_coords[0][2]}:{roi_coords[0][3]}")
                 plt.close(fig)
             else:
                 print("No ROI selected yet.")
@@ -58,29 +56,30 @@ class TriCoincidence:
         self.microscope.imaging.set_active_view(3)
         image = self.microscope.imaging.get_image()
 
-        roi_coords = None
-
         fig, ax = plt.subplots()
         plt.subplots_adjust(bottom=0.2)
-        ax.imshow(image, cmap='gray')
+        ax.imshow(image.data, cmap='gray')
         ax.set_title("Draw ROI, then click OK to confirm")
 
         selector = RectangleSelector(
             ax, onselect,
             useblit=True,
-            button=[1],  # Left mouse button
+            button=[1],
             minspanx=5, minspany=5,
             spancoords='pixels',
             interactive=True
         )
 
-        ok_ax = plt.axes([0.4, 0.05, 0.2, 0.075])  # [left, bottom, width, height]
+        ok_ax = plt.axes([0.4, 0.05, 0.2, 0.075])
         ok_button = Button(ok_ax, 'OK')
         ok_button.on_clicked(on_ok_clicked)
-        plt.show()
 
-        if roi_coords:
-            plt.imshow(image[roi_coords[0]:roi_coords[1], roi_coords[2]:roi_coords[3]])
+        plt.show()  # Blocking call, waits until GUI is closed
+
+        # This executes only after the window is closed
+        if roi_coords[0]:
+            xmin, xmax, ymin, ymax = roi_coords[0], roi_coords[1], roi_coords[2], roi_coords[3]
+            plt.imshow(image[ymin:ymax, xmin:xmax])  # Note: y = rows, x = cols
             plt.show()
             return roi_coords
         else:

@@ -79,11 +79,8 @@ class TriCoincidence:
         plt.show()  # Blocking call, waits until GUI is closed
 
         # This executes only after the window is closed
-        if roi_coords[0]:
-            xmin, xmax, ymin, ymax = roi_coords[0], roi_coords[1], roi_coords[2], roi_coords[3]
-            plt.imshow(image[ymin:ymax, xmin:xmax])  # Note: y = rows, x = cols
-            plt.show()
-            return roi_coords
+        if roi_coords:
+            return roi_coords[0]
         else:
             print("No ROI was selected.")
 
@@ -100,7 +97,6 @@ class TriCoincidence:
             if event.key == 'q':
                 print("Quit key pressed.")
                 running = False
-                plt.savefig(os.path.join(self.path, 'Target_Position_FIB_Focus_Shifted.png'), dpi=300, bbox_inches='tight')
 
         if roi_coords is not None:
             fig, ax = plt.subplots()
@@ -114,13 +110,16 @@ class TriCoincidence:
                 self.microscope.imaging.state == ImagingState.ACQUIRING
                 if flashing is False:
                     image = self.microscope.imaging.get_image()
-                    image_stack.append(image)
-                    intensity = image[roi_coords[0]:roi_coords[1], roi_coords[2]: roi_coords[3]]
+                    image_stack.append(image.data)
+                    av_intensity = np.nanmean(image.data[roi_coords[0]:roi_coords[1], roi_coords[2]: roi_coords[3]])
                     xdata.append(i)
-                    ydata.append(intensity)
+                    ydata.append(av_intensity)
+                    i=i+1
                 else:
                     #Here I would like to turn on the flash!
                     print('Not yet implemented')
+                print(xdata)
+                print(ydata)
                 line.set_data(xdata, ydata)
                 ax.relim()  # Recompute the data limits based on current xdata/ydata
                 ax.autoscale_view()  # Update the view (zoom) to include new limits
@@ -138,14 +137,14 @@ class TriCoincidence:
 ### might get overwritten!
 #####################################
 
-folder_path = 'set path here'
+folder_path = 'C:\\Users\\User\\Desktop\\TestImages\\'
 tri = TriCoincidence(emission_color='blue', excitation_color='blue', path=folder_path, tool='hydra')
 roi_coords = tri.define_roi()
 if roi_coords:
-    intensity_values, image_stack = tri.record_images()
+    intensity_values, image_stack = tri.record_images(roi_coords=roi_coords)
     with open(os.path.join(folder_path + 'intensity_list.txt'), 'w') as f:
         for item in intensity_values:
             f.write(f"{item}\n")
-    np.save(path=folder_path, arr=image_stack, allow_pickle=False)
+    np.save(path=os.path.join(folder_path, "avg_int.npy"), arr=image_stack, allow_pickle=False)
 
 

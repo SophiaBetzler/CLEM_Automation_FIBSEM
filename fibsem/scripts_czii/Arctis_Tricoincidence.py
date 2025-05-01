@@ -9,6 +9,7 @@ from autoscript_sdb_microscope_client.structures import GetImageSettings
 import matplotlib.pyplot as plt
 from matplotlib.widgets import RectangleSelector, Button
 import numpy as np
+import time
 import os
 import queue
 import cv2
@@ -110,7 +111,7 @@ class TriCoincidence:
 
         self.microscope.imaging.set_active_device(ImagingDevice.FLUORESCENCE_LIGHT_MICROSCOPE)
         self.microscope.detector.camera_settings.exposure_time.value = self.exposure_time
-        self.microscope.detector.camera_settings.emission.type.value = self.color
+        self.microscope.detector.camera_settings.emission.type = self.color
         self.microscope.detector.brightness.value = self.intensity
         self.microscope.detector.camera_settings.filter.type.value = 'Fluorescence'
         self.microscope.detector.camera_settings.binning.value = self.binning
@@ -154,6 +155,7 @@ class TriCoincidence:
                         av_intensity = np.nanmean(image.data[roi_coords[0]:roi_coords[1], roi_coords[2]: roi_coords[3]])
                         xdata.append(timestamp)
                         ydata.append(av_intensity)
+                        time.sleep(0.5)
                         i += 1
 
                 line.set_data(xdata, ydata)

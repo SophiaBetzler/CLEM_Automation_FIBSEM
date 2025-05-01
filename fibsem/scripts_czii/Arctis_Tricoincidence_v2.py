@@ -1,16 +1,15 @@
 import sys
-#sys.path.append('C:\Program Files\Thermo Scientific Autoscript')
-#sys.path.append('C:\Program Files\Enthought\Python\envs\AutoScript\Lib\site-packages')
+sys.path.append('C:\Program Files\Thermo Scientific Autoscript')
+sys.path.append('C:\Program Files\Enthought\Python\envs\AutoScript\Lib\site-packages')
 
 from autoscript_sdb_microscope_client import SdbMicroscopeClient
 from autoscript_sdb_microscope_client.enumerations import *
 from autoscript_sdb_microscope_client.structures import *
 from autoscript_sdb_microscope_client.structures import GetImageSettings
-import matplotlib
-matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 from matplotlib.widgets import RectangleSelector, Button
 import numpy as np
+import time
 import os
 import queue
 import cv2
@@ -45,15 +44,11 @@ class TriCoincidence:
         self.binning = binning
         if tool == 'arctis':
             available_modes = ['Fluorescence', 'Reflection']
-            self.dict_available_colors = {'Blue': CameraEmissionType.BLUE,
-                                     'GreenYellow': CameraEmissionType.GREEN_YELLOW,
-                                     'Red': CameraEmissionType.RED,
-                                     'Violet': CameraEmissionType.VIOLET}
+            available_colors = ['Blue', 'GreenYellow', 'Red', 'Violet']
             if mode not in available_modes:
                 raise ValueError(f"Mode '{mode}' is not in available modes: {available_modes}")
-            if color not in self.dict_available_colors:
+            if color not in available_colors:
                 raise ValueError(f"Color '{color}' is not in available colors: {available_colors}")
-
 
     def define_roi(self):
         """
@@ -109,62 +104,59 @@ class TriCoincidence:
             if item is None:
                 break
             img, idx = item
-            path = os.path.join(self.path, f"image_{idx:.3f}.png")
-            cv2.imwrite(path, img)
+            cv2.imwrite(os.path.join(self.path, f"image_{idx:.3f}.png"), img)
             self.image_queue.task_done()
 
     def record_images(self, roi_coords=None, flashing=False):
 
         self.microscope.imaging.set_active_device(ImagingDevice.FLUORESCENCE_LIGHT_MICROSCOPE)
         self.microscope.detector.camera_settings.exposure_time.value = self.exposure_time
+        self.microscope.detector.camera_settings.emission.type = self.color
         self.microscope.detector.brightness.value = self.intensity
+        self.microscope.detector.camera_settings.filter.type.value = 'Fluorescence'
         self.microscope.detector.camera_settings.binning.value = self.binning
         self.microscope.imaging.start_acquisition()
-        ### THIS NEEDS TO BE UN-COMMENTED WHEN THE FILTER POSITION IS FIXED
-        #self.microscope.detector.camera_settings.filter.type.value = 'Fluorescence'
-
-
-        writer_thread = threading.Thread(target=self.image_writer, daemon=True)
+        writer_thread = threading.Thread(target=self.image_writer)
         writer_thread.start()
 
         running = True
         def on_key(event):
-            global running
+            nonlocal running
             if event.key == 'q':
                 print("Quit key pressed.")
                 running = False
 
-        def on_stop_button(event):
-            nonlocal running
-            print("Stop button clicked.")
-            running = False
-
         if roi_coords is not None:
             fig, ax = plt.subplots()
-            plt.subplots_adjust(bottom=0.25)
             line, = ax.plot([], [], 'b-')
-            button_ax = plt.axes([0.4, 0.05, 0.2, 0.075])
-            stop_button = Button(button_ax, 'STOP')
-            stop_button.on_clicked(on_stop_button)
-            #fig.canvas.mpl_connect('key_press_event', on_key)
+            fig.canvas.mpl_connect('key_press_event', on_key)
             xdata = []
             ydata = []
             image_stack = []
             start_time = datetime.now()
             i = 0
-            while running and i < 10:
+            while running:
                 if self.microscope.imaging.state == ImagingState.ACQUIRING:
-                    now = datetime.now()
-                    timestamp = (now - start_time).total_seconds()
-                    image = self.microscope.imaging.get_image()
-                    self.image_queue.put((image.data.copy(), i))
-                    self.microscope.detector.camera_settings.emission.start(emission_type=self.dict_available_colors[self.color])
-                    #image_stack.append(image.data)
-                    av_intensity = np.nanmean(image.data[roi_coords[0]:roi_coords[1], roi_coords[2]: roi_coords[3]])
-                    xdata.append(timestamp)
-                    ydata.append(av_intensity)
-                    i += 1
-                    self.microscope.detector.camera_settings.emission.stop()
+                    if flashing is False:
+                        now = datetime.now()
+                        timestamp = (now - start_time).total_seconds()
+                        image = self.microscope.imaging.get_image()
+                        #image_stack.append(image.data)
+                        av_intensity = np.nanmean(image.data[roi_coords[0]:roi_coords[1], roi_coords[2]: roi_coords[3]])
+                        xdata.append(timestamp)
+                        ydata.append(av_intensity)
+                        i += 1
+                    else:
+                        now = datetime.now()
+                        timestamp = (now - start_time).total_seconds()
+                        self.microscope.detector.camera_settings.emission.start(emission_type=self.color)
+                        image = self.microscope.imaging.get_image()
+                        self.microscope.detector.camera_settings.emission.stop()
+                        av_intensity = np.nanmean(image.data[roi_coords[0]:roi_coords[1], roi_coords[2]: roi_coords[3]])
+                        xdata.append(timestamp)
+                        ydata.append(av_intensity)
+                        time.sleep(0.5)
+                        i += 1
 
                 line.set_data(xdata, ydata)
                 ax.relim()  # Recompute the data limits based on current xdata/ydata
@@ -172,7 +164,7 @@ class TriCoincidence:
                 plt.pause(0.01)
 
             self.microscope.imaging.stop_acquisition()
-            #plt.close(fig)
+            plt.close(fig)
             self.image_queue.put(None)
             writer_thread.join()
 
@@ -193,7 +185,7 @@ folder_path = Path(os.path.join(basic_path, str(date.today()), now.strftime("%H-
 folder_path.mkdir(parents=True, exist_ok=True)
 
 
-tri = TriCoincidence(color='Blue', mode='Fluorescence', path=folder_path, tool='arctis',
+tri = TriCoincidence(emission_color='blue', excitation_color='blue', path=folder_path, tool='hydra',
                      exposure_time=100e-6, intensity=0.01, binning=1)
 roi_coords = tri.define_roi()
 if roi_coords:

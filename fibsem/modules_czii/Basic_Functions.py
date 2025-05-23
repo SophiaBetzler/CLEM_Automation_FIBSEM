@@ -341,62 +341,62 @@ from PyQt5.QtWidgets import (
     QCheckBox, QPushButton, QLabel, QMessageBox
 )
 
-class GridSelectionWindow(QWidget):
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle("Select Grid")
-        self.selected_grid = None
-        self.init_ui()
-
-    def init_ui(self):
-        layout = QVBoxLayout()
-
-        label = QLabel("Please select one grid:")
-        layout.addWidget(label)
-
-        # Create checkboxes
-        self.grid1_checkbox = QCheckBox("Grid 1")
-        self.grid2_checkbox = QCheckBox("Grid 2")
-
-        # Make them mutually exclusive
-        self.grid1_checkbox.toggled.connect(self.on_grid1_toggled)
-        self.grid2_checkbox.toggled.connect(self.on_grid2_toggled)
-
-        layout.addWidget(self.grid1_checkbox)
-        layout.addWidget(self.grid2_checkbox)
-
-        # Submit button
-        submit_btn = QPushButton("Submit")
-        submit_btn.clicked.connect(self.submit_selection)
-        layout.addWidget(submit_btn)
-
-        self.setLayout(layout)
-
-    def on_grid1_toggled(self, checked):
-        if checked:
-            self.grid2_checkbox.setChecked(False)
-
-    def on_grid2_toggled(self, checked):
-        if checked:
-            self.grid1_checkbox.setChecked(False)
-
-    def submit_selection(self):
-        if self.grid1_checkbox.isChecked():
-            self.selected_grid = "Grid 1"
-        elif self.grid2_checkbox.isChecked():
-            self.selected_grid = "Grid 2"
-        else:
-            QMessageBox.warning(self, "No Selection", "Please select a grid.")
-            return
-
-        print(f"Selected grid: {self.selected_grid}")
-        self.close()
-
-if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    window = GridSelectionWindow()
-    window.show()
-    app.exec()
-
-    # You can access the selected grid after the window is closed
-    print("User selected:", window.selected_grid)
+# class GridSelectionWindow(QWidget):
+#     def __init__(self):
+#         super().__init__()
+#         self.setWindowTitle("Select Grid")
+#         self.selected_grid = None
+#         self.init_ui()
+#
+#     def init_ui(self):
+#         layout = QVBoxLayout()
+#
+#         label = QLabel("Please select one grid:")
+#         layout.addWidget(label)
+#
+#         # Create checkboxes
+#         self.grid1_checkbox = QCheckBox("Grid 1")
+#         self.grid2_checkbox = QCheckBox("Grid 2")
+#
+#         # Make them mutually exclusive
+#         self.grid1_checkbox.toggled.connect(self.on_grid1_toggled)
+#         self.grid2_checkbox.toggled.connect(self.on_grid2_toggled)
+#
+#         layout.addWidget(self.grid1_checkbox)
+#         layout.addWidget(self.grid2_checkbox)
+#
+#         # Submit button
+#         submit_btn = QPushButton("Submit")
+#         submit_btn.clicked.connect(self.submit_selection)
+#         layout.addWidget(submit_btn)
+#
+#         self.setLayout(layout)
+#
+#     def on_grid1_toggled(self, checked):
+#         if checked:
+#             self.grid2_checkbox.setChecked(False)
+#
+#     def on_grid2_toggled(self, checked):
+#         if checked:
+#             self.grid1_checkbox.setChecked(False)
+#
+#     def submit_selection(self):
+#         if self.grid1_checkbox.isChecked():
+#             self.selected_grid = "Grid 1"
+#         elif self.grid2_checkbox.isChecked():
+#             self.selected_grid = "Grid 2"
+#         else:
+#             QMessageBox.warning(self, "No Selection", "Please select a grid.")
+#             return
+#
+#         print(f"Selected grid: {self.selected_grid}")
+#         self.close()
+#
+# if __name__ == "__main__":
+#     app = QApplication(sys.argv)
+#     window = GridSelectionWindow()
+#     window.show()
+#     app.exec()
+#
+#     # You can access the selected grid after the window is closed
+#     print("User selected:", window.selected_grid)

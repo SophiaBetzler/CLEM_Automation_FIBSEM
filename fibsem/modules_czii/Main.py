@@ -11,14 +11,20 @@ from EucentricHeight import EucentricHeight
 #                 tool='Hydra',
 #                 pc_type='windows')
 
-bf = BasicFunctions(
-                pc_type='mac',
-                manufacturer='Demo',
-                 ip='localhost',
-                 tool='Hydra')
-
 fib_microscope, fib_settings = bf.connect_to_microscope()
-imaging = Imaging(fib_microscope=fib_microscope, bf=bf)
+
+fib_microscope.connect
+
+# bf = BasicFunctions(
+#                 pc_type='mac',
+#                 manufacturer='Demo',
+#                  ip='localhost',
+#                  tool='Hydra')
+
+
+
+#imaging = Imaging(fib_microscope=fib_microscope, bf=bf)
+#imaging.acquire_image(save=False, beam_type='electron', autofocus=True, fib_settings=fib_settings)
 #imaging.acquire_tileset(method='overview')
 
 
@@ -27,8 +33,8 @@ imaging = Imaging(fib_microscope=fib_microscope, bf=bf)
 #milling = MillingSetup(bf=bf, fib_microscope=fib_microscope, fiducial_id=fiducial_id)
 
 
-gis = GisSputterAutomation(fib_microscope=fib_microscope, bf=bf, grid_number=1)
-gis.setup_sputtering(60)
+#gis = #GisSputterAutomation(fib_microscope=fib_microscope, bf=bf, grid_number=1)
+#gis.#setup_sputtering(1)
 #gis.setup_gis(wait_time=1)
 #eucentric = EucentricHeight(fib_microscope=fib_microscope, bf=bf)
 

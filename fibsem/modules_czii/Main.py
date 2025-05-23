@@ -1,25 +1,50 @@
 from Basic_Functions import BasicFunctions
+from Fluorescence import Fluorescence
 from Imaging import Imaging
 from GIS_Sputter_Setup import GisSputterAutomation
 from Fiducial_Identification import FiducialID
+from Automatic_CLEM import *
+from TriCoincidence import AutomatedTriCoincidence
 from Milling import MillingSetup
 import numpy as np
 from EucentricHeight import EucentricHeight
+
 
 # bf = BasicFunctions(manufacturer='Thermo',
 #                 ip='192.168.0.1',
 #                 tool='Hydra',
 #                 pc_type='windows')
 
-bf = BasicFunctions(
-                pc_type='mac',
-                manufacturer='Demo',
-                 ip='localhost',
-                 tool='Hydra')
+### I removed the path, important for the CLEM pipeline
 
-fib_microscope, fib_settings = bf.connect_to_microscope()
-imaging = Imaging(fib_microscope=fib_microscope, bf=bf)
-#imaging.acquire_tileset(method='overview')
+#### I NEED TO FIND AN EFFICIENT WAY TO SET THE GRID NUMBER. I CAN SET IT WHEN I CALL THE GIS/SPUTTER AUTOMATION BUT THERE
+### SHOULD ALSO BE ANOTHER WAY. MAYBE WHEN IT IS NONE I SHOULD CREATE A FUNCTION WHICH LETs THE USER SELECT?
+# I Need it for the fluorescence and the GIS. Do I need it for anything else?
+# You can sent the grid number to the OverArch function and then it is accessible for all other functions. How and when
+# Should this be done?
+# The function to do this is self.overarch.set_variable("name", value)
+# AutomatedTriCoincidence()
+
+gis = GisSputterAutomation()
+
+#fl = Fluorescence(fl_microscope='Meteor', grid_number=1, bf=bf, fib_microscope=fib_microscope)
+
+#fl.insert_objective()
+#fl_stack, fl_scale = bf.import_images(bf.folder_path + 'FL_Z_stack.tiff')
+#fib_image, fib_scale = bf.import_images(bf.folder_path + 'FIB_image.tiff')
+
+
+
+
+
+
+#clem = AutomaticCLEM(bf=bf, target_position=[22, 632, 458], lamella_top_y=412.0)
+#clem.run_full_3dct_pipeline()
+
+#imaging = Imaging(fib_microscope=fib_microscope, bf=bf)
+
+
+#user_selected_rois = imaging.acquire_tileset(method='overview')
 
 
 
@@ -27,8 +52,8 @@ imaging = Imaging(fib_microscope=fib_microscope, bf=bf)
 #milling = MillingSetup(bf=bf, fib_microscope=fib_microscope, fiducial_id=fiducial_id)
 
 
-gis = GisSputterAutomation(fib_microscope=fib_microscope, bf=bf, grid_number=1)
-gis.setup_sputtering(60)
+#gis = GisSputterAutomation(fib_microscope=fib_microscope, bf=bf, grid_number=1)
+#gis.setup_sputtering(60)
 #gis.setup_gis(wait_time=1)
 #eucentric = EucentricHeight(fib_microscope=fib_microscope, bf=bf)
 

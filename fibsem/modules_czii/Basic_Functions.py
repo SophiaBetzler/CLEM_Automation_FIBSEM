@@ -335,11 +335,11 @@ class OverArch(BasicFunctions):
     def set_variable(self, name, value):
         setattr(self, name, value)
 
-import sys
-from PyQt5.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QHBoxLayout,
-    QCheckBox, QPushButton, QLabel, QMessageBox
-)
+# import sys
+# from PyQt5.QtWidgets import (
+#     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
+#     QCheckBox, QPushButton, QLabel, QMessageBox
+# )
 
 # class GridSelectionWindow(QWidget):
 #     def __init__(self):

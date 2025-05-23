@@ -17,6 +17,7 @@ from sklearn.preprocessing import PolynomialFeatures
 from PIL import Image
 from typing import Any
 import copy
+from scipy.spatial.transform import Rotation as R
 
 
 
@@ -26,10 +27,12 @@ import copy
 #
 ########################################################################################################################
 class AutomaticCLEM:
-    def __init__(self, bf):
+    def __init__(self, bf, target_position, lamella_top_y):
         self.bf = bf
         self.folder_path = self.bf.folder_path
         self.temp_folder_path = self.bf.temp_folder_path
+        self.target_position = target_position
+        self.lamella_top_y = lamella_top_y
 
     def run_full_3dct_pipeline(self):
         self.identify_spotburns_fl_stack()
@@ -52,7 +55,6 @@ class AutomaticCLEM:
         self.bf.execute_external_script(script='Identify_Spotburns_Remote.py',
                                         dir_name='Ultralytics',
                                         parameter=[self.folder_path, 'FL'])
-
         while not os.path.exists(os.path.join(self.temp_folder_path, 'spotburns_id_result.json')):
             time.sleep(0.1)
 
@@ -66,11 +68,12 @@ class AutomaticCLEM:
                                                       path=self.folder_path)
 
         self.ml_spotburn_location_fl = z_height_determination.run_fitting()
-
+        print(f"The spotburn location in fl are {self.ml_spotburn_location_fl}.")
 
     def identify_spotburns_fib_image(self):
 
         self.fib_image, self.fib_scale = self.bf.import_images(self.folder_path + 'FIB_image.tiff')
+        print(self.fib_scale)
 
         np.save(os.path.join(self.temp_folder_path, "FIB_Image.npy"), self.fib_image)
 
@@ -88,7 +91,7 @@ class AutomaticCLEM:
 
         spotburn_location_fib = sorted(list_spotburns_fib_ml, key=lambda v: (v[2], v[1], v[0]))
         self.ml_spotburn_location_fib = [entry[1:] for entry in spotburn_location_fib]
-
+        print(f"The spotburns identified in fib are {self.ml_spotburn_location_fib}")
 
     def verify_identified_fiducials(self):
 
@@ -101,7 +104,8 @@ class AutomaticCLEM:
                                          method='thorough')
 
         self.fl_spotburns_final, self.fib_spotburns_final= spotburn_matching.run_spotburn_matching()
-
+        print(f"The final position of the spotburns in the fl are {self.fl_spotburns_final}. The "
+              f"final position of the spotburns in fib are {self.fib_spotburns_final}")
 
     def correlation_3dct(self):
 
@@ -111,7 +115,10 @@ class AutomaticCLEM:
                                                fl_stack=self.fl_stack,
                                                fl_stack_fl=self.fl_stack_fl,
                                                fl_scale=self.fl_scale,
-                                               path=self.folder_path)
+                                               path=self.folder_path,
+                                               target_FL_position=self.target_position, #[z, y, x] in pixel
+                                               lamella_top_y=self.lamella_top_y) #in pixel
+
         params_init = transformation_3d.guess_parameters_svd()
         transformation_3d.run_transformation(params_init)
 
@@ -266,7 +273,7 @@ class ZHeightDetermination:
         z_height, r2 = plot_z_fit_result(x, y, x_interp, y_interp, result, start, path, window_size)
         return z_height, r2
 
-    def determine_2d_spotburn_center(self, x0, y0, z_height, path, window_size=14, use_aic=True, max_degree=3):
+    def determine_2d_spotburn_center(self, x0, y0, z_height, path, window_size=20, use_aic=True, max_degree=3):
         """
         This function finds the center of the spot-burn based on the previously identified Z-height-slice. The
         window_size is important to take the spot-burn size into account. Should be constant if the same experimental
@@ -396,7 +403,7 @@ class ZHeightDetermination:
         Function to run the fitting workflow. Three-step process.
         """
 
-        def remove_duplicates(result, threshold=1.5):
+        def remove_duplicates(result, threshold=3.0):
             result = np.array(result)
             keep = []
             visited = np.zeros(len(result), dtype=bool)
@@ -409,7 +416,7 @@ class ZHeightDetermination:
 
                 for j in range(i + 1, len(result)):
                     if not visited[j]:
-                        if np.all(np.abs(result[i] - result[j]) < threshold):
+                        if np.all(np.abs(result[i][1:] - result[j][1:]) < threshold):
                             group.append(result[j])
                             visited[j] = True
 
@@ -473,7 +480,7 @@ class ZHeightDetermination:
 
         plt.figure(figsize=(12, 5))
         plt.imshow(max_proj, cmap='gray')
-        plt.scatter(x_vals, y_vals, marker='x', color='w')
+        plt.scatter(x_vals, y_vals, marker='x', color='#90DEFF')
         plt.tight_layout()
         plt.savefig(self.path + 'MIP_with_spotburns.png', dpi=300, bbox_inches='tight')
         plt.close()
@@ -525,6 +532,7 @@ class SpotburnMatching:
             x_aligned = model_x.predict(points_src)
             y_aligned = model_y.predict(points_src)
             return np.vstack([x_aligned, y_aligned]).T
+
 
         def estimate_similarity_transform(src, dst):
             """
@@ -598,8 +606,8 @@ class SpotburnMatching:
             if visualize:
                 plt.figure(figsize=(8, 6))
                 plt.title("Fiducial Matching: FL (blue) vs FIB View (red)")
-                plt.scatter(fl_spotburns_scaled[:, 0], fl_spotburns_scaled[:, 1], label="FL - Stack", c='blue')
-                plt.scatter(aligned_fib_spotburns[:, 0], aligned_fib_spotburns[:, 1], label="FIB - Image", c='red')
+                plt.scatter(fl_spotburns_scaled[:, 0], fl_spotburns_scaled[:, 1], label="FL - Stack", marker='X', color='#90DEFF', s=50)
+                plt.scatter(aligned_fib_spotburns[:, 0], aligned_fib_spotburns[:, 1], label="FIB - Image", color='#AEF359', s=70)
                 for i, j in matches:
                     p1 = fl_spotburns_scaled[i]
                     p2 = aligned_fib_spotburns[j]
@@ -609,7 +617,7 @@ class SpotburnMatching:
                 plt.ylabel("Y (µm)")
                 plt.legend()
                 plt.tight_layout()
-                plt.savefig(self.path + 'Spotburn_Matching_Output.png', dpi=300, bbox_inches='tight')
+                plt.savefig(os.path.join(self.path + 'Spotburn_Matching_Output_2.png'), dpi=300, bbox_inches='tight')
 
 
             matched_fl = fl_spotburns_scaled[[i for i, _ in matches]]
@@ -630,10 +638,82 @@ class SpotburnMatching:
         return final_fl_spotburns, final_fib_spotburns
 
     def thorough_alignment(self):
+        # def match_points_fixed_scale_brute(
+        #         src_pts, tgt_pts,
+        #         scale=1.2, min_points=3,
+        #         top_n=2500, shortest_as_source=False):
+        #
+        #     src_pts = np.asarray(src_pts, dtype=np.float64)
+        #     tgt_pts = np.asarray(tgt_pts, dtype=np.float64)
+        #
+        #     D, Ns = src_pts.shape
+        #     Nt = tgt_pts.shape[1]
+        #     assert D == tgt_pts.shape[0]
+        #
+        #     self.was_swapped = False
+        #     if shortest_as_source:
+        #         if Ns > Nt:
+        #             src_pts, tgt_pts = tgt_pts, src_pts
+        #             Ns, Nt = Nt, Ns
+        #             print("[INFO] Swapped: smaller set is now source.")
+        #             self.was_swapped = True
+        #     else:
+        #         if Ns < Nt:
+        #             src_pts, tgt_pts = tgt_pts, src_pts
+        #             Ns, Nt = Nt, Ns
+        #             print("[INFO] Swapped: larger set is now source.")
+        #             self.was_swapped = True
+        #
+        #     candidate_models = []
+        #
+        #     combos = list(itertools.combinations(range(Ns), min_points))
+        #     perms = list(itertools.permutations(range(Nt), min_points))
+        #
+        #     total = len(combos) * len(perms)
+        #     print(f"[INFO] Total model hypotheses to test: {total}")
+        #
+        #     progress = 0
+        #     for i_idx, i_combo in enumerate(combos):
+        #         for j_idx, j_combo in enumerate(perms):
+        #             progress += 1
+        #             if progress % 1000 == 0 or progress == 1:
+        #                 print(f"[STATUS] Processing model {progress}/{total} ({(progress / total) * 100:.1f}%)")
+        #
+        #             src_sel = src_pts[:, i_combo]
+        #             tgt_sel = tgt_pts[:, j_combo]
+        #
+        #             Rmat, tvec = estimate_rigid_transform_fixed_scale(src_sel, tgt_sel, scale)
+        #             src_all = Rmat @ (src_pts * scale) + tvec[:, None]
+        #
+        #             if Ns <= Nt:
+        #                 permutations_to_use = itertools.permutations(range(Nt), Ns)
+        #                 for full_j in permutations_to_use:
+        #                     tgt_all = tgt_pts[:, list(full_j)]
+        #                     pairing = list(zip(range(Ns), list(full_j)))
+        #                     error = np.mean(np.linalg.norm(src_all - tgt_all, axis=0) ** 2)
+        #                     candidate_models.append((error, Rmat, tvec, pairing))
+        #             else:
+        #                 permutations_to_use = itertools.permutations(range(Ns), Nt)
+        #                 for full_i in permutations_to_use:
+        #                     src_subset = src_all[:, list(full_i)]
+        #                     tgt_all = tgt_pts
+        #                     pairing = list(zip(list(full_i), range(Nt)))
+        #                     error = np.mean(np.linalg.norm(src_subset - tgt_all, axis=0) ** 2)
+        #                     candidate_models.append((error, Rmat, tvec, pairing))
+        #
+        #     print("[INFO] Sorting candidate models...")
+        #     candidate_models.sort(key=lambda x: x[0])
+        #     print("[INFO] Done.")
+        #     return candidate_models[:top_n]
+        import numpy as np
+        import itertools
+        from scipy.spatial.distance import cdist
+
         def match_points_fixed_scale_brute(
                 src_pts, tgt_pts,
                 scale=1.2, min_points=3,
-                top_n=2500, shortest_as_source=False):
+                top_n=2500, shortest_as_source=False,
+                tol=0.05, use_fallback=True):
 
             src_pts = np.asarray(src_pts, dtype=np.float64)
             tgt_pts = np.asarray(tgt_pts, dtype=np.float64)
@@ -656,17 +736,52 @@ class SpotburnMatching:
                     print("[INFO] Swapped: larger set is now source.")
                     self.was_swapped = True
 
-            candidate_models = []
+            # --- Prefilter using median distance ratio ---
+            D_src = cdist(src_pts.T, src_pts.T)
+            D_tgt = cdist(tgt_pts.T, tgt_pts.T)
 
-            combos = list(itertools.combinations(range(Ns), min_points))
-            perms = list(itertools.permutations(range(Nt), min_points))
+            scale_low, scale_high = scale * (1 - tol), scale * (1 + tol)
+
+            valid_src_indices = set()
+            valid_tgt_indices = set()
+
+            for i in range(Ns):
+                src_d = np.median(D_src[i][D_src[i] > 0])
+                if src_d == 0:
+                    continue
+                for j in range(Nt):
+                    tgt_d = np.median(D_tgt[j][D_tgt[j] > 0])
+                    if tgt_d == 0:
+                        continue
+                    rel_error = abs(tgt_d - scale * src_d) / (scale * src_d + 1e-8)
+                    if rel_error <= tol:
+                        valid_src_indices.add(i)
+                        valid_tgt_indices.add(j)
+
+            valid_src_indices = sorted(valid_src_indices)
+            valid_tgt_indices = sorted(valid_tgt_indices)
+
+            if len(valid_src_indices) < min_points or len(valid_tgt_indices) < min_points:
+                print("[WARN] Not enough valid points after filtering.")
+                if use_fallback:
+                    print("[INFO] Retrying with full point sets (no filtering)...")
+                    # Use all original points
+                    valid_src_indices = list(range(Ns))
+                    valid_tgt_indices = list(range(Nt))
+                else:
+                    return []
+
+            combos = list(itertools.combinations(valid_src_indices, min_points))
+            perms = list(itertools.permutations(valid_tgt_indices, min_points))
 
             total = len(combos) * len(perms)
             print(f"[INFO] Total model hypotheses to test: {total}")
 
+            candidate_models = []
             progress = 0
-            for i_idx, i_combo in enumerate(combos):
-                for j_idx, j_combo in enumerate(perms):
+
+            for i_combo in combos:
+                for j_combo in perms:
                     progress += 1
                     if progress % 1000 == 0 or progress == 1:
                         print(f"[STATUS] Processing model {progress}/{total} ({(progress / total) * 100:.1f}%)")
@@ -678,20 +793,17 @@ class SpotburnMatching:
                     src_all = Rmat @ (src_pts * scale) + tvec[:, None]
 
                     if Ns <= Nt:
-                        permutations_to_use = itertools.permutations(range(Nt), Ns)
-                        for full_j in permutations_to_use:
-                            tgt_all = tgt_pts[:, list(full_j)]
-                            pairing = list(zip(range(Ns), list(full_j)))
-                            error = np.mean(np.linalg.norm(src_all - tgt_all, axis=0) ** 2)
-                            candidate_models.append((error, Rmat, tvec, pairing))
+                        dists = np.linalg.norm(src_all[:, :, None] - tgt_pts[:, None, :], axis=0)  # shape: (Ns, Nt)
+                        indices = np.argmin(dists, axis=1)  # length Ns
+                        pairing = list(zip(range(Ns), indices))
+                        error = np.mean([dists[i, indices[i]] ** 2 for i in range(Ns)])
                     else:
-                        permutations_to_use = itertools.permutations(range(Ns), Nt)
-                        for full_i in permutations_to_use:
-                            src_subset = src_all[:, list(full_i)]
-                            tgt_all = tgt_pts
-                            pairing = list(zip(list(full_i), range(Nt)))
-                            error = np.mean(np.linalg.norm(src_subset - tgt_all, axis=0) ** 2)
-                            candidate_models.append((error, Rmat, tvec, pairing))
+                        dists = np.linalg.norm(tgt_pts[:, :, None] - src_all[:, None, :], axis=0)  # shape: (Nt, Ns)
+                        indices = np.argmin(dists, axis=1)  # length Nt
+                        pairing = list(zip(indices, range(Nt)))
+                        error = np.mean([dists[j, indices[j]] ** 2 for j in range(Nt)])
+
+                    candidate_models.append((error, Rmat, tvec, pairing))
 
             print("[INFO] Sorting candidate models...")
             candidate_models.sort(key=lambda x: x[0])
@@ -850,8 +962,8 @@ class SpotburnMatching:
                 for idx, (i, j) in enumerate(pairing):
                     if inliers[idx]:
                         ax.plot([src_trans[0, i], tgt_pts[0, j]], [src_trans[1, i], tgt_pts[1, j]], 'k--', alpha=0.6)
-                ax.scatter(src_trans[0], src_trans[1], c='red', label='Transformed Source')
-                ax.scatter(tgt_pts[0], tgt_pts[1], c='blue', label='Target')
+                ax.scatter(src_trans[0], src_trans[1], marker='o', s=40, color='#008000', edgecolors='#000000', label='FIB Fiducials')
+                ax.scatter(tgt_pts[0], tgt_pts[1], marker='X', s=70, color='#90DEFF', edgecolors='#000000', label='FL Fiducials')
                 ax.set_title("Best Model Alignment (Top Cluster)")
                 ax.axis('equal')
                 ax.legend()
@@ -965,7 +1077,7 @@ class SpotburnMatching:
 class Transformation3DCT:
 
     def __init__(self, fib_fiducials, fl_fiducials, fl_stack, fl_stack_fl, fib_image,
-                 fib_scale, fl_scale, path):
+                 fib_scale, fl_scale, path, target_FL_position, lamella_top_y):
         self.path = path
         self.fib_image = fib_image
         self.fl_stack = fl_stack
@@ -978,6 +1090,8 @@ class Transformation3DCT:
         fib_fiducials = fib_fiducials[::-1]
         self.fib_fiducials = [fib_fiducials]
         self.fl_fiducials = [fl_fiducials]
+        self.target_fl_position = target_FL_position # in pixels
+        self.lamella_top_y = lamella_top_y
 
 ######################################################
 ### Functions required to do the 3D Transformation ###
@@ -1089,14 +1203,20 @@ class Transformation3DCT:
         Scale 3D points (confocal / FL) by voxel spacing to get real-world micrometer units.
         """
         dz, dy, dx = self.fl_scale
+        print(f"The scale of the FL is {self.fl_scale}.")
         scale_matrix = np.diag([dx, dy, dz])
+        print(f"The scale matrix is {scale_matrix}")
+        print(f"The function returns {scale_matrix @ x}.")
         return scale_matrix @ x
 
     def scale_fib_pixels(self, y):
         """
         Scale 2D FIB coordinates by pixel size to get real-world micrometer units.
         """
-        dy, dx = self.fib_scale[1:]
+        if self.fib_scale[2] < 1e-5:
+            dy, dx = (np.array(self.fib_scale[1:]) * 1e6)
+        else:
+            dy, dx = self.fib_scale[1:]
         return np.array([y[0, :] * dx, y[1, :] * dy])
 
     def objective_with_huber(self, params):
@@ -1135,34 +1255,88 @@ class Transformation3DCT:
             total_loss += np.sum(residuals ** 2)
         return total_loss
 
+    # def estimate_similarity_transform_3d_to_2d(self, X, Y):
+    #     """
+    #     Estimate initial parameters (R, s, d) for 3D→2D projection using Procrustes (SVD) method.
+    #     Inputs:
+    #     - X: shape (3, N) → 3D source points (already scaled)
+    #     - Y: shape (2, N) → 2D target points (already scaled)
+    #     Returns:
+    #     - q: quaternion representing rotation (len 4)
+    #     - s: scale
+    #     - d: translation (2D)
+    #     """
+    #     N = X.shape[1]
+    #     mu_X = np.mean(X, axis=1, keepdims=True)
+    #     mu_Y = np.mean(Y, axis=1, keepdims=True)
+    #     Xc = X - mu_X
+    #     Yc = Y - mu_Y
+    #     A = Yc @ np.linalg.pinv(Xc)
+    #     s = np.linalg.norm(A, ord='fro') / np.sqrt(2)
+    #     R_2x3 = A / s
+    #     u, _, vh = np.linalg.svd(R_2x3)
+    #     R_full = np.eye(3)
+    #     R_full[:2, :] = R_2x3
+    #     rotation = R.from_matrix(R_full)
+    #     q = rotation.as_quat()  # (x, y, z, w) format
+    #     q = np.roll(q, 1)
+    #     d = mu_Y - s * R_2x3 @ mu_X
+    #     d = d.flatten()
+    #     return q, s, d
+    from scipy.spatial.transform import Rotation as R
+
     def estimate_similarity_transform_3d_to_2d(self, X, Y):
         """
-        Estimate initial parameters (R, s, d) for 3D→2D projection using Procrustes (SVD) method.
+        Estimate initial parameters (R, s, d) for 3D→2D projection properly.
+
         Inputs:
         - X: shape (3, N) → 3D source points (already scaled)
         - Y: shape (2, N) → 2D target points (already scaled)
+
         Returns:
         - q: quaternion representing rotation (len 4)
         - s: scale
         - d: translation (2D)
         """
         N = X.shape[1]
-        mu_X = np.mean(X, axis=1, keepdims=True)
-        mu_Y = np.mean(Y, axis=1, keepdims=True)
+
+        # Center the points
+        mu_X = np.mean(X, axis=1, keepdims=True)  # (3, 1)
+        mu_Y = np.mean(Y, axis=1, keepdims=True)  # (2, 1)
         Xc = X - mu_X
         Yc = Y - mu_Y
-        A = Yc @ np.linalg.pinv(Xc)
-        s = np.linalg.norm(A, ord='fro') / np.sqrt(2)
-        R_2x3 = A / s
-        u, _, vh = np.linalg.svd(R_2x3)
-        R_full = np.eye(3)
-        R_full[:2, :] = R_2x3
-        rotation = R.from_matrix(R_full)
-        q = rotation.as_quat()  # (x, y, z, w) format
-        q = np.roll(q, 1)
-        d = mu_Y - s * R_2x3 @ mu_X
-        d = d.flatten()
-        return q, s, d
+
+        # Solve for linear transformation A
+        A = Yc @ np.linalg.pinv(Xc)  # (2, 3)
+
+        # Extract scale
+        scale = np.linalg.norm(A, ord='fro') / np.sqrt(2)
+
+        # Normalize A to get projection
+        A_normalized = A / scale  # (2, 3)
+
+        # Now, make a full 3x3 rotation matrix
+        # First two rows are A_normalized
+        R_est = np.zeros((3, 3))
+        R_est[:2, :] = A_normalized
+
+        # Set third row as the cross product to complete an orthonormal basis
+        # Ensuring right-handedness
+        R_est[2, :] = np.cross(R_est[0, :], R_est[1, :])
+
+        # Re-orthogonalize using SVD (in case of slight numerical issues)
+        U, _, Vt = np.linalg.svd(R_est)
+        R_est = U @ Vt
+
+        # Convert rotation matrix to quaternion
+        rotation = R.from_matrix(R_est)
+        q = rotation.as_quat()  # (x, y, z, w)
+        q = np.roll(q, 1)  # Make it (w, x, y, z) to match your convention
+
+        # Translation
+        d = (mu_Y - scale * A_normalized @ mu_X).flatten()
+
+        return q, scale, d
 
     def guess_parameters_svd(self):
         """
@@ -1171,6 +1345,7 @@ class Transformation3DCT:
         X_all = np.hstack([self.scale_fl_voxels(X) for X in self.fl_fiducials])
         Y_all = np.hstack([self.scale_fib_pixels(Y) for Y in self.fib_fiducials])
         q, s, d = self.estimate_similarity_transform_3d_to_2d(X_all, Y_all)
+        print(f"The initial guess parameters are {q} and {s} and {d}")
         return np.concatenate([q, [s], d])
 
     def guess_parameters(self, scale_range=(0.5, 2.0), trans_range=None):
@@ -1192,19 +1367,99 @@ class Transformation3DCT:
         params = np.concatenate([q, [s], [dx, dy]])
         return params
 
+    def check_point_scaling(self):
+        """
+        Quick sanity check: compare average point magnitudes
+        after voxel/pixel scaling. Warn if mismatched.
+        """
+        X_all = np.hstack([self.scale_fl_voxels(X) for X in self.fl_fiducials])
+        Y_all = np.hstack([self.scale_fib_pixels(Y) for Y in self.fib_fiducials])
+
+        avg_norm_X = np.mean(np.linalg.norm(X_all, axis=0))
+        avg_norm_Y = np.mean(np.linalg.norm(Y_all, axis=0))
+
+        ratio = avg_norm_X / avg_norm_Y if avg_norm_Y != 0 else np.inf
+
+        print("\n--- Sanity Check: Point Magnitude Comparison ---")
+        print(f"Average 3D FL point magnitude (µm): {avg_norm_X:.4f}")
+        print(f"Average 2D FIB point magnitude (µm): {avg_norm_Y:.4f}")
+        print(f"Ratio (FL / FIB): {ratio:.4f}")
+
+        if ratio > 10 or ratio < 0.1:
+            print("⚠️ WARNING: Points are very differently scaled. Registration might fail!")
+        else:
+            print("✅ Point scales are reasonably matched.")
+
+    def project_FL_point_to_FIB(self):
+        """
+        Projects a 3D FL target point (in microns) into FIB 2D pixel coordinates.
+
+        Input:
+        - target_microns: array-like, shape (3,) [x, y, z] in microns
+
+        Output:
+        - projected_pixel: array, shape (2,) [x_pix, y_pix]
+        """
+        # Apply rotation, scale, translation
+        e = self.e_final / np.linalg.norm(self.e_final)
+        r_full = self.quaternion_to_rotation_matrix(e)
+        r_proj = r_full[:2, :]
+        s = self.s_final
+        d = self.d_final.reshape(2, 1)
+        dz, dy, dx = self.fl_scale  # voxel sizes in microns
+        x_vox, y_vox, z_vox = self.target_fl_position[2], self.target_fl_position[1], self.target_fl_position[0]
+
+        # Scale voxel indices to real-world microns
+        target_microns = np.array([x_vox * dx, y_vox * dy, z_vox * dz]).reshape(3, 1)
+        target_2d_microns = s * (r_proj @ target_microns) + d  # shape (2,1)
+
+        # Convert microns to pixels
+        if self.fib_scale[2] < 1e-5:
+            dy_fib, dx_fib = np.array(self.fib_scale[1:]) * 1e6  # microns per pixel
+        else:
+            dy_fib, dx_fib = self.fib_scale[1:]
+        projected_target_pixels = (target_2d_microns / np.array([[dx_fib], [dy_fib]])).flatten()
+        focused_shifted_pixels = self.lamella_top_y + 1.4*(projected_target_pixels[1] - self.lamella_top_y)
+
+        fig, ax = plt.subplots(figsize=(10, 10))
+        ax.imshow(self.fib_image[0], cmap='gray', origin='upper')
+
+        # Plot the projected point
+        ax.scatter(projected_target_pixels[0], projected_target_pixels[1], marker='X', s=70, c='red', edgecolors='black')
+
+        ax.set_title("Projected Target Point on FIB Image")
+        ax.axis('off')
+        plt.savefig(os.path.join(self.path, 'Target_Position_FIB.png'), dpi=300, bbox_inches='tight')
+        plt.close()
+
+        fig, ax = plt.subplots(figsize=(10, 10))
+        ax.imshow(self.fib_image[0][300:1000, 300:1000], cmap='gray', origin='upper')
+
+        # Plot the projected point
+        ax.scatter(projected_target_pixels[0]-300, projected_target_pixels[1]-300, edgecolors='k', marker='X', s=50, color='red')
+        ax.scatter(projected_target_pixels[0]-300, focused_shifted_pixels-300, edgecolors='k', marker='X', s=50, color='orange')
+
+        ax.set_title("Projected Target Point on FIB Image")
+        ax.axis('off')
+        plt.savefig(os.path.join(self.path, 'Target_Position_FIB_Focus_Shifted.png'), dpi=300, bbox_inches='tight')
+
     def run_transformation(self, params_init):
         """
         Function runs the two-step optimization process.
         """
+        self.check_point_scaling()
         constraints = {'type': 'eq', 'fun': self.quaternion_constraint}
         result_robust = minimize(
             fun=self.objective_with_huber,
             x0=params_init,
             method='SLSQP',
             constraints=constraints,
-            options={'disp': True}
+            bounds=[(-1, 1)] * 4 + [(-2.0, 2.0)] + [(-np.inf, np.inf), (-np.inf, np.inf)],
+            options={'disp': True, 'maxiter': 100}
         )
         params_first = result_robust.x
+        print(f"--- After first (robust) optimization ---")
+        print(f"Estimated Scale: {params_first[4]:.6f}")
         e_first, s_first, d_first = params_first[0:4], params_first[4], params_first[5:7]
         fl_inliers, fib_inliers = [], []
         for X, Y in zip(self.fl_fiducials, self.fib_fiducials):
@@ -1223,7 +1478,7 @@ class Transformation3DCT:
             x0=params_first,
             method='SLSQP',
             constraints=constraints,
-            options={'disp': True},
+            options={'disp': True, 'maxiter': 100},
             callback=loss_callback
         )
 
@@ -1247,6 +1502,7 @@ class Transformation3DCT:
 
         self.generate_all_overlays()
         self.plot_fiducial_alignment()
+        self.project_FL_point_to_FIB()
 
 ########################################################################
 ### Create overlays and other outputs from the correlation process
@@ -1274,7 +1530,10 @@ class Transformation3DCT:
         e = self.e_final / np.linalg.norm(self.e_final)
         s = self.s_final
         d = self.d_final.reshape(2, 1)
-        dy_fib, dx_fib = self.fib_scale[1:]
+        if self.fib_scale[2] < 1e-5:
+            dy_fib, dx_fib = np.array(self.fib_scale[1:]) * 1e6
+        else:
+            dy_fib, dx_fib = self.fib_scale[1:]
 
         for X, Y in zip(self.fl_fiducials, self.fib_fiducials):
             x_scaled = self.scale_fl_voxels(X)  # in microns
@@ -1321,9 +1580,9 @@ class Transformation3DCT:
             Y_scaled_pix = Y_scaled[[0, 1]] / np.array([[dx_fib], [dy_fib]])
             Y_pred_pix = Y_pred[[0, 1]] / np.array([[dx_fib], [dy_fib]])
 
-            ax.scatter(Y_scaled_pix[0], Y_scaled_pix[1], c='lime', s=50, marker='x', label='FIB Fiducials')
-            ax.scatter(Y_pred_pix[0], Y_pred_pix[1], c='cyan', s=40, marker='o',
-                       edgecolors='white', label='Projected FL Fiducials')
+            ax.scatter(Y_scaled_pix[0], Y_scaled_pix[1], color='#008000', edgecolors='k', s=90, marker='o', label='FIB Fiducials')
+            ax.scatter(Y_pred_pix[0], Y_pred_pix[1], color='#90DEFF', s=70, marker='X',
+                       edgecolors='k', label='Projected FL Fiducials')
 
         ax.set_title("Overlay: FL Projection + Fiducials")
         ax.axis('off')
@@ -1352,7 +1611,10 @@ class Transformation3DCT:
         d = self.d_final.reshape(2, 1)
         r_proj = self.quaternion_to_rotation_matrix(e)[:2, :]
         dz, dy, dx = self.fl_scale
-        dy_fib, dx_fib = self.fib_scale[1:]
+        if self.fib_scale[2] < 1e-5:
+            dy_fib, dx_fib = (np.array(self.fib_scale[1:]) * 1e6)
+        else:
+            dy_fib, dx_fib = self.fib_scale[1:]
         fib_image = self.fib_image[0]
 
         def project_coords(coords_3d):

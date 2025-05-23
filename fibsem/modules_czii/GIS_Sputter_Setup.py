@@ -42,7 +42,7 @@ class GisSputterAutomation(BasicFunctions):
                     self.thermo_microscope.specimen.sputter_coater.run(int(time))
                 except Exception as e:
                     print(f"The sputtering process failed because of {e}.")
-            elif self.tool == 'Hydra':
+            elif self.tool == 'Hydra 5 Hydra UX':
                 target_stage_position = self.retrieve_stage_position(self.grid_number, 'sputter')
                 self.fib_microscope.move_stage_absolute(target_stage_position)
                 if self.stage_position_within_limits(limit=5,
@@ -89,7 +89,7 @@ class GisSputterAutomation(BasicFunctions):
                         time.sleep(time)
                         gis_needle.close()
                         gis_needle.retract()
-                    elif self.tool == 'Hydra':
+                    elif self.tool == 'Hydra 5 Hydra UX':
                         multichem_needle = self.thermo_microscope.gas.get_multichem()
                         multichem_needle.turn_heater_on('CRYO Pt ')
                         if multichem_needle.state == 'Retracted':

@@ -12,7 +12,7 @@ from EucentricHeight import EucentricHeight
 
 # bf = BasicFunctions(manufacturer='Thermo',
 #                 ip='192.168.0.1',
-#                 tool='Hydra',
+#                 tool='Hydra 5 Hydra UX',
 #                 pc_type='windows')
 
 ### I removed the path, important for the CLEM pipeline

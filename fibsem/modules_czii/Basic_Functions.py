@@ -117,9 +117,9 @@ class BasicFunctions:
         Establish connection to the microscope.
         manufacturer: 'Demo', 'Thermo', 'Tescan'
         ip: 'localhost', '192.168.0.1'
-        tool: 'Hydra', 'Arctis'
+        tool: 'Hydra 5 Hydra UX', 'Arctis'
         """
-        if self.tool == 'Hydra':
+        if self.tool == 'Hydra 5 Hydra UX':
             config_path = os.path.join(self.project_root, 'config', 'czii-tfs-hydra-configuration.yaml')
         elif self.tool == 'Arctis':
             config_path = os.path.join(self.project_root, 'config', 'tfs-arctis-configuration.yaml')
@@ -284,8 +284,8 @@ class BasicFunctions:
                                'FIB': 'FIB_topview',
                                'FL': 'FL_position'
                                 }
-        self.tool = 'Hydra'
-        if self.tool == 'Hydra':
+        self.tool = 'Hydra 5 Hydra UX'
+        if self.tool == 'Hydra 5 Hydra UX':
             if grid_number is None:
                 RuntimeError("Please select a valid grid.")
             else:

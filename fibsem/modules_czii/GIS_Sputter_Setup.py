@@ -12,110 +12,116 @@ import sys
 from PyQt5.QtWidgets import (QApplication, QWidget, QLineEdit, QPushButton, QFormLayout,
                              QVBoxLayout, QHBoxLayout, QMessageBox,
                              QRadioButton, QButtonGroup)
-from Basic_Functions import BasicFunctions
+from Basic_Functions import BasicFunctions, OverArch
 
-class GisSputterAutomation(BasicFunctions):
+class GisSputterAutomation:
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, overarch: OverArch):
         self.project_root = Path(__file__).resolve().parent.parent
-        self.before_stage_position = self.fib_microscope.get_stage_position()
+        self.oa = overarch
+        self.before_stage_position = self.oa.fib_microscope.get_stage_position()
         self.app = QApplication(sys.argv)
         self.input_window = InputWindow(self.run_automated_process)
         self.run()
 
-    def setup_sputtering(self, time):
-        if time == 0:
+    def setup_sputtering(self, process_time):
+        if process_time == 0.0:
             print(f"Sputter step is skipped.")
         else:
-            self.thermo_microscope.beams.ion_beam.turn_on()
-            self.thermo_microscope.beams.ion_beam.source.plasma_gas.value = 'ARGON'
-            self.thermo_microscope.beams.ion_beam.high_voltage = 12000
-            self.thermo_microscope.beams.ion_beam.beam_current = 60e-9
-            self.thermo_microscope.beams.ion_beam.scanning.rotation = 0.0
-            self.thermo_microscope.beams.ion_beam.horizontal_field_width = (
-                self.thermo_microscope.beams.ion_beam.horizontal_field_width.limits.min)
-            self.thermo_microscope.patterning.clear_patterns()
-            if self.tool == 'Arctis':
-                try:
-                    self.thermo_microscope.specimen.sputter_coater.current = 60e-9
-                    self.thermo_microscope.specimen.sputter_coater.run(int(time))
-                except Exception as e:
-                    print(f"The sputtering process failed because of {e}.")
-            elif self.tool == 'Hydra 5 Hydra UX':
-                target_stage_position = self.retrieve_stage_position(self.grid_number, 'sputter')
-                self.fib_microscope.move_stage_absolute(target_stage_position)
-                if self.stage_position_within_limits(limit=5,
-                                                 target_position=target_stage_position) is True:
-                    pt_needle = self.thermo_microscope.gas.get_gis_port('µSputter')
-                    pt_needle.insert()
-                    pt_needle_pattern = np.array([[1.45651561426744E-04, 6.64882312424326E-04],
-                                          [-5.22964004557272E-04, 6.49570505569732E-04],
-                                          [-7.27121429285215E-04, 5.27076050732976E-04],
-                                          [-8.8862682243944E-04, 1.94128991749241E-04],
-                                          [-9.31558247406688E-04, -5.13542946156679E-05],
-                                          [-8.72306303805652E-04, -2.80703364890847E-04],
-                                          [-7.64395328406466E-04, -4.54857094726658E-04],
-                                          [-6.11405614772345E-04, -5.85789981686577E-04],
-                                          [-2.96417971236887E-04, -6.63272670403714E-04],
-                                          [-8.32068785097803E-06, -6.70840422732026E-04],
-                                          [4.55219705511043E-04, -6.62604481026923E-04],
-                                          [7.96403352747065E-04, -4.63087459197467E-04],
-                                          [9.49574359688812E-04, -1.63231241628326E-04],
-                                          [9.41403205733267E-04, 1.79649552180094E-04],
-                                          [8.55704192307081E-04, 3.75876937069012E-04],
-                                          [5.53009422954219E-04, 6.13842956242344E-04]], dtype=float)
-                    self.thermo_microscope.patterning.create_polygon(pt_needle_pattern, 5e-4)
-                    self.thermo_microscope.patterning.start()
-                    time.sleep(time)
-                    self.thermo_microscope.patterning.stop()
-                    self.thermo_microscope.patterning.clear_patterns()
-            else:
-                RuntimeError("Automatic Sputter/GIS Setup not available for this tool.")
+            self.oa.thermo_microscope.imaging.set_active_view(2)
+            self.oa.thermo_microscope.imaging.set_active_device(2)
+            self.oa.thermo_microscope.beams.ion_beam.source.plasma_gas.value = 'Argon'
+            self.oa.thermo_microscope.beams.ion_beam.turn_on()
+            self.oa.thermo_microscope.beams.ion_beam.high_voltage.value = 12000
+            self.oa.thermo_microscope.beams.ion_beam.beam_current.value = 0.15e-6
+            self.oa.thermo_microscope.beams.ion_beam.scanning.rotation.value = 0.0
+            self.oa.thermo_microscope.beams.ion_beam.horizontal_field_width.value = (
+                self.oa.thermo_microscope.beams.ion_beam.horizontal_field_width.limits.max)
+            self.oa.thermo_microscope.patterning.clear_patterns()
+            if self.oa.tool == 'Arctis':
+                print('Arctis')
+                # try:
+                #     self.thermo_microscope.specimen.sputter_coater.current = 60e-9
+                #     self.thermo_microscope.specimen.sputter_coater.run(int(time))
+                # except Exception as e:
+                #     print(f"The sputtering process failed because of {e}.")
+            elif self.oa.tool == 'Hydra':
+                target_stage_position = self.oa.retrieve_stage_position(grid_number=self.grid_number, position_name='sputter')
+                #self.oa.fib_microscope.move_stage_absolute(target_stage_position)
+                #if self.oa.stage_position_within_limits(limit=5,
+                #                                 target_position=target_stage_position) is True:
+                pt_needle = self.oa.thermo_microscope.gas.get_gis_port('Pt dep')
+                pt_needle.insert()
+                pt_needle_pattern =[[1.45651561426744E-04, 6.64882312424326E-04],
+                                       [-5.22964004557272E-04, 6.49570505569732E-04],
+                                      [-7.27121429285215E-04, 5.27076050732976E-04],
+                                       [-8.8862682243944E-04, 1.94128991749241E-04],
+                                       [-9.31558247406688E-04, -5.13542946156679E-05],
+                                       [-8.72306303805652E-04, -2.80703364890847E-04],
+                                       [-7.64395328406466E-04, -4.54857094726658E-04],
+                                       [-6.11405614772345E-04, -5.85789981686577E-04],
+                                       [-2.96417971236887E-04, -6.63272670403714E-04],
+                                       [-8.32068785097803E-06, -6.70840422732026E-04],
+                                       [4.55219705511043E-04, -6.62604481026923E-04],
+                                       [7.96403352747065E-04, -4.63087459197467E-04],
+                                       [9.49574359688812E-04, -1.63231241628326E-04],
+                                       [9.41403205733267E-04, 1.79649552180094E-04],
+                                       [8.55704192307081E-04, 3.75876937069012E-04],
+                                       [5.53009422954219E-04, 6.13842956242344E-04]]
+                self.oa.thermo_microscope.patterning.create_polygon(pt_needle_pattern, 5e-4)
+                self.oa.thermo_microscope.patterning.start()
+                time.sleep(process_time)
+                self.oa.thermo_microscope.patterning.stop()
+                self.oa.thermo_microscope.patterning.clear_patterns()
+                pt_needle.retract()
 
-    def setup_gis(self, time):
-        if time == 0:
+                #else:
+                #    raise RuntimeError("Stage position not correct for sputtering.")
+            else:
+                raise RuntimeError("Automatic Sputter/GIS Setup not available for this tool.")
+
+    def setup_gis(self, process_time):
+        if process_time == 0:
             print(f"GIS step is skipped.")
         else:
-            target_position = self.retrieve_stage_position(self.grid_number, 'gis')
-            self.fib_microscope.move_stage_absolute(target_position)
-            if self.stage_position_within_limits(limit=5, target_position=target_position) is True:
-                try:
-                    if self.tool == 'Arctis':
-                        gis_needle = self.thermo_microscope.gas.get_gis_port('CRYO Pt ')
-                        gis_needle.turn_heater_on()
-                        gis_needle.insert()
-                        gis_needle.open()
-                        time.sleep(time)
-                        gis_needle.close()
-                        gis_needle.retract()
-                    elif self.tool == 'Hydra 5 Hydra UX':
-                        multichem_needle = self.thermo_microscope.gas.get_multichem()
-                        multichem_needle.turn_heater_on('CRYO Pt ')
-                        if multichem_needle.state == 'Retracted':
-                            multichem_needle.insert()
-                            self.thermo_microscope.beams.ion_beam.turn_on()
-                            self.thermo_microscope.beams.ion_beam.source.plasma_gas.value = 'ARGON'
-                            self.thermo_microscope.beams.ion_beam.high_voltage = 12000
-                            self.thermo_microscope.beams.ion_beam.beam_current = 60e-9
-                            self.thermo_microscope.beams.ion_beam.scanning.rotation = 0.0
-                            self.thermo_microscope.beams.ion_beam.horizontal_field_width = (
-                                self.thermo_microscope.beams.ion_beam.horizontal_field_width.limits.min)
-                            self.thermo_microscope.patterning.clear_patterns()
-                            pattern = self.thermo_microscope.microscope.patterning. \
-                                create_rectangle(center_x=0.0, center_y=0.0, width=2e-6, height=2e-6, depth=50e-6)
-                            pattern.application_file = "W_M e"
-                            pattern.gas_type = 'CRYO Pt '
-                            pattern.gas_flow = [80.0]
-                            # self.thermo_microscope.microscope.patterning.start()    # ?? DO I NEED THIS?
-                            multichem_needle.open()
-                            time.sleep(time + 2)
-                            multichem_needle.close()
-                            multichem_needle.retract()
-                    else:
-                        RuntimeError(f"The GIS setup process failed, correct stage position not reached.")
-                except Exception as e:
-                    print(f"The GIS layer failed because of {e}.")
+            print('GIS')
+            # target_position = self.retrieve_stage_position(self.grid_number, 'gis')
+            # self.fib_microscope.move_stage_absolute(target_position)
+            # if self.stage_position_within_limits(limit=5, target_position=target_position) is True:
+            #     try:
+            #         if self.tool == 'Arctis':
+            #             gis_needle = self.thermo_microscope.gas.get_gis_port('CRYO Pt ')
+            #             gis_needle.turn_heater_on()
+            #             gis_needle.insert()
+            #             gis_needle.open()
+            #             time.sleep(time)
+            #             gis_needle.close()
+            #             gis_needle.retract()
+            #         elif self.tool == 'Hydra':
+            multichem_needle = self.oa.thermo_microscope.gas.get_multichem()
+            multichem_needle.turn_heater_on('CRYO Pt ')
+            #             if multichem_needle.state == 'Retracted':
+            multichem_needle.insert()
+            self.oa.thermo_microscope.beams.ion_beam.turn_on()
+            self.oa.thermo_microscope.beams.ion_beam.source.plasma_gas.value = 'Argon'
+            self.oa.thermo_microscope.beams.ion_beam.high_voltage.value = 12000
+            self.oa.thermo_microscope.beams.ion_beam.beam_current.value = 0.15e-6
+            self.oa.thermo_microscope.beams.ion_beam.scanning.rotation.value = 0.0
+            self.oa.thermo_microscope.beams.ion_beam.horizontal_field_width.value = (
+            self.oa.thermo_microscope.beams.ion_beam.horizontal_field_width.limits.max)
+            self.oa.thermo_microscope.patterning.clear_patterns()
+            pattern = self.oa.thermo_microscope.patterning. \
+                        create_rectangle(center_x=0.0, center_y=0.0, width=2e-6, height=2e-6, depth=50e-6)
+            pattern.application_file = "W_M 12kV"
+            pattern.gas_type = 'CRYO Pt '
+            multichem_needle.open()
+            time.sleep(process_time + 2)
+            multichem_needle.close()
+            multichem_needle.retract()
+            #         else:
+            #             raise RuntimeError(f"The GIS setup process failed, correct stage position not reached.")
+            #     except Exception as e:
+            #         print(f"The GIS layer failed because of {e}.")
 
     def run_automated_process(self, input_values):
         try:
@@ -123,9 +129,12 @@ class GisSputterAutomation(BasicFunctions):
                 self.grid_number = int(input_values['Grid'])
             else:
                 self.grid_number = None
+                raise RuntimeError('No valid grid selected.')
+            self.oa.thermo_microscope.specimen.stage.link()
             self.setup_sputtering(input_values['Sputter_Step1'])
             self.setup_gis(input_values['GIS_Step1'])
             self.setup_sputtering(input_values['Sputter_Step2'])
+            self.oa.thermo_microscope.specimen.stage.unlink()
         except Exception as e:
             print(f"The automated sputter/GIS process failed because of: {e}")
 
@@ -173,6 +182,7 @@ class InputWindow(QWidget):
     def read_values(self):
         try:
             values = {label: float(field.text()) for label, field in self.inputs.items()}
+            print(values)
             if self.grid1_radio.isChecked():
                 values["Grid"] = "1"
             elif self.grid2_radio.isChecked():

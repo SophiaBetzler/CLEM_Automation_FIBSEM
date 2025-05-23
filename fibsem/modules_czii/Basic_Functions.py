@@ -17,9 +17,9 @@ import json
 import tifffile
 import platform
 ### HERE THE CORRECT PATH TO AUTOSCRIPT CLIENT MUST BE ADDED
-sys.path.append('C:\Program Files\Enthought\Python\envs\AutoScript\Lib\site-packages')
-#from autoscript_sdb_microscope_client import SdbMicroscopeClient
-
+sys.path.append("C:\Program Files\Thermo Scientific AutoScript")
+sys.path.append("C:\Program Files\Enthought\Python\envs\AutoScript\Lib\site-packages")
+from autoscript_sdb_microscope_client import SdbMicroscopeClient
 
 def error_message(text):
     messagebox.showerror("Error", text)
@@ -53,19 +53,24 @@ class BasicFunctions:
         create_temp_folder()
         self.project_root = Path(__file__).resolve().parent.parent
         self.python_root = Path(__file__).resolve().parent.parent.parent.parent
+        self.temp_folder_path, self.folder_path = create_temp_folder()
         try:
             self.thermo_microscope = SdbMicroscopeClient()
             self.thermo_microscope.connect()
             self.tool = self.thermo_microscope.service.system.name
             self.manufacturer = 'Thermo'
         except:
+            print('Autoscript connection not successful.')
             self.manufacturer = 'Demo'
             self.tool = 'Arctis'
-        self.pc_type = os_name = platform.system()
-        self.temp_folder_path, self.folder_path = create_temp_folder()
+        self.pc_type = platform.system()
+        print(self.pc_type)
+        if self.tool == 'Helios 5 Hydra UX':
+            self.tool = 'Hydra'
         with open(os.path.join(self.project_root, 'modules_czii', f"czii-stored-stage-positions_{self.tool.lower()}.yaml"), "r") as file:
             self.saved_stage_positions = yaml.safe_load(file)
         self.fib_microscope, self.fib_settings = self.connect_to_microscope()
+
 
     def socket_communication(self, target_pc, function, args):
         if target_pc == 'Meteor_PC':
@@ -116,10 +121,10 @@ class BasicFunctions:
         """
         Establish connection to the microscope.
         manufacturer: 'Demo', 'Thermo', 'Tescan'
-        ip: 'localhost', '192.168.0.1'
-        tool: 'Hydra 5 Hydra UX', 'Arctis'
+        ip: 'localhost', '192.168.0.1' using the default IP for Thermo at the moment.
+        tool: 'Hydra', 'Arctis'
         """
-        if self.tool == 'Hydra 5 Hydra UX':
+        if self.tool == 'Hydra':
             config_path = os.path.join(self.project_root, 'config', 'czii-tfs-hydra-configuration.yaml')
         elif self.tool == 'Arctis':
             config_path = os.path.join(self.project_root, 'config', 'tfs-arctis-configuration.yaml')
@@ -128,7 +133,6 @@ class BasicFunctions:
 
         try:
             fib_microscope, fib_settings = utils.setup_session(manufacturer=self.manufacturer,
-                                                               ip_address='localhost',
                                                                config_path=config_path)
             return fib_microscope, fib_settings
 
@@ -211,10 +215,10 @@ class BasicFunctions:
         limit: limit in percent
         target_position: FibsemStagePosition
         """
-        current_position = microscope.get_stage_position()
+        current_position = self.fib_microscope.get_stage_position()
         current = [current_position.x, current_position.y, current_position.z, current_position.t, current_position.r]
         target = [target_position.x, target_position.y, target_position.z, target_position.t, target_position.r]
-        return all(abs(cur - tar) <= limit/100 * tar for cur, tar in zip(current, target))
+        return all(abs(cur - tar) <= abs(limit/100 * tar) for cur, tar in zip(current, target))
 
     def import_images(self, path, fl=False):
         img = AICSImage(path)
@@ -284,10 +288,11 @@ class BasicFunctions:
                                'FIB': 'FIB_topview',
                                'FL': 'FL_position'
                                 }
-        self.tool = 'Hydra 5 Hydra UX'
-        if self.tool == 'Hydra 5 Hydra UX':
+        self.tool = 'Hydra'
+        if self.tool == 'Hydra':
             if grid_number is None:
-                RuntimeError("Please select a valid grid.")
+                raise RuntimeError("Please select a valid grid.")
+
             else:
                 stage_position = next(
                     (d for d in self.saved_stage_positions if d.get("name") == f"grid{grid_number}_"
@@ -297,15 +302,15 @@ class BasicFunctions:
                 (d for d in self.saved_stage_positions if d.get("name") == f"{dict_position_names[position_name]}"),
                 None)
         else:
-            RuntimeError("Stage positions not known for this microscope.")
+            raise RuntimeError("Stage positions not known for this microscope.")
             sys.exit()
 
         if stage_position:
-            fibsem_stage_position = structures.FibsemStagePosition(x=stage_position['x']/1000,
-                                                 y=stage_position['y']/1000,
-                                                 z=stage_position['z']/1000,
-                                                 r=np.deg2rad(stage_position['r']),
-                                                 t=np.deg2rad(stage_position['t']))
+            fibsem_stage_position = structures.FibsemStagePosition(x=stage_position['x'],
+                                                 y=stage_position['y'],
+                                                 z=stage_position['z'],
+                                                 r=stage_position['r'],
+                                                 t=stage_position['t'])
             return fibsem_stage_position
         else:
             print('Stage position retrieval not valid.')

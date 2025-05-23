@@ -1,13 +1,17 @@
-from Basic_Functions import BasicFunctions
-from Fluorescence import Fluorescence
-from Imaging import Imaging
+from Basic_Functions import BasicFunctions, OverArch
+# from Fluorescence import Fluorescence
+# from Imaging import Imaging
 from GIS_Sputter_Setup import GisSputterAutomation
-from Fiducial_Identification import FiducialID
-from Automatic_CLEM import *
-from TriCoincidence import AutomatedTriCoincidence
-from Milling import MillingSetup
-import numpy as np
-from EucentricHeight import EucentricHeight
+# from Fiducial_Identification import FiducialID
+# from Automatic_CLEM import *
+# from TriCoincidence import AutomatedTriCoincidence
+# from Milling import MillingSetup
+# import numpy as np
+# from EucentricHeight import EucentricHeight
+
+
+oa = OverArch()
+gis = GisSputterAutomation(oa)
 
 
 # bf = BasicFunctions(manufacturer='Thermo',
@@ -22,10 +26,12 @@ from EucentricHeight import EucentricHeight
 # I Need it for the fluorescence and the GIS. Do I need it for anything else?
 # You can sent the grid number to the OverArch function and then it is accessible for all other functions. How and when
 # Should this be done?
-# The function to do this is self.overarch.set_variable("name", value)
+# The function to do this is self.oa.set_variable("name", value)
 # AutomatedTriCoincidence()
 
-gis = GisSputterAutomation()
+#gis = GisSputterAutomation()
+
+
 
 #fl = Fluorescence(fl_microscope='Meteor', grid_number=1, bf=bf, fib_microscope=fib_microscope)
 

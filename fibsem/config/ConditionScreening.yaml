@@ -1,0 +1,13 @@
+dwell_time: 1.0e-7
+current: 25.0e-12
+hfw: 600.0e-6
+voltage: 2000.0
+resolution: [1536, 1024]
+scan_rotation: 180.0
+autocontrast: False
+autogamma: False
+drift_correction: False
+frame_integration: 1
+line_integration: 1
+save: False
+stage_bias: -12.0

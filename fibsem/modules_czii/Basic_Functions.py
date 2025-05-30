@@ -19,7 +19,7 @@ import platform
 ### HERE THE CORRECT PATH TO AUTOSCRIPT CLIENT MUST BE ADDED
 sys.path.append("C:\Program Files\Thermo Scientific AutoScript")
 sys.path.append("C:\Program Files\Enthought\Python\envs\AutoScript\Lib\site-packages")
-from autoscript_sdb_microscope_client import SdbMicroscopeClient
+#from autoscript_sdb_microscope_client import SdbMicroscopeClient
 
 def error_message(text):
     messagebox.showerror("Error", text)
@@ -62,9 +62,9 @@ class BasicFunctions:
         except:
             print('Autoscript connection not successful.')
             self.manufacturer = 'Demo'
+            self.thermo_microscope = None
             self.tool = 'Arctis'
         self.pc_type = platform.system()
-        print(self.pc_type)
         if self.tool == 'Helios 5 Hydra UX':
             self.tool = 'Hydra'
         with open(os.path.join(self.project_root, 'modules_czii', f"czii-stored-stage-positions_{self.tool.lower()}.yaml"), "r") as file:
@@ -151,7 +151,7 @@ class BasicFunctions:
             return eval(value)
 
         yaml.add_constructor('!calc', calc_constructor)
-
+        print(filename)
         with open(os.path.join(self.project_root, 'modules_czii', filename + '.yaml')) as file:
             dictionary = yaml.load(file, Loader=yaml.FullLoader)
         for key in dictionary:
@@ -316,21 +316,23 @@ class BasicFunctions:
             print('Stage position retrieval not valid.')
 
     def autoloader_control(self):
-        # available_grids = self.thermo_microscope.specimen.autoloader.get_slots(False)
-        # docked_autoloader = False
-        # for grid_slot in self.available_grids:
-        #     if grid_slot.state != 'Unknown':
-        #         docked_autoloader = True
-        # if docked_autoloader is not True:
-        #     available_grids = self.thermo_microscope.specimen.autoloader.get_slots(True)
-        #
-        # grid_numbers = []
-        # for i in len(available_grids):
-        #     if available_grids[i].state == 'Specimen' or 'Loaded': ### HIER NOCHMAL NACHSCHAUEN WAS DER STATUS
-        #         grid_numbers.append(i)
-        grid_numbers = [1, 3, 5, 6]
-        available_grids = []
-        return grid_numbers, available_grids
+        if self.manufacturer != 'Demo':
+
+            self.available_grids = self.thermo_microscope.specimen.autoloader.get_slots(False)
+            inventory_done = False
+            for grid_slot in self.available_grids:
+                if grid_slot.state != 'Unknown':
+                    inventory_done = True
+            if inventory_done is not True:
+                self.available_grids = self.thermo_microscope.specimen.autoloader.get_slots(True)
+
+            self.grid_numbers = []
+            for i in len(self.available_grids):
+                if self.available_grids[i].state == "Occupied":
+                    self.grid_numbers.append(i)
+        else:
+            self.grid_numbers = [1, 3, 5, 6]
+
 
 class OverArch(BasicFunctions):
     def __init__(self):

@@ -47,39 +47,39 @@ class GisSputterAutomation:
                 #     print(f"The sputtering process failed because of {e}.")
             elif self.oa.tool == 'Hydra':
                 target_stage_position = self.oa.retrieve_stage_position(grid_number=self.grid_number, position_name='sputter')
-                #self.oa.fib_microscope.move_stage_absolute(target_stage_position)
-                #if self.oa.stage_position_within_limits(limit=5,
-                #                                 target_position=target_stage_position) is True:
-                pt_needle = self.oa.thermo_microscope.gas.get_gis_port('Pt dep')
-                pt_needle.insert()
-                pt_needle_pattern =[[1.45651561426744E-04, 6.64882312424326E-04],
-                                       [-5.22964004557272E-04, 6.49570505569732E-04],
-                                      [-7.27121429285215E-04, 5.27076050732976E-04],
-                                       [-8.8862682243944E-04, 1.94128991749241E-04],
-                                       [-9.31558247406688E-04, -5.13542946156679E-05],
-                                       [-8.72306303805652E-04, -2.80703364890847E-04],
-                                       [-7.64395328406466E-04, -4.54857094726658E-04],
-                                       [-6.11405614772345E-04, -5.85789981686577E-04],
-                                       [-2.96417971236887E-04, -6.63272670403714E-04],
-                                       [-8.32068785097803E-06, -6.70840422732026E-04],
-                                       [4.55219705511043E-04, -6.62604481026923E-04],
-                                       [7.96403352747065E-04, -4.63087459197467E-04],
-                                       [9.49574359688812E-04, -1.63231241628326E-04],
-                                       [9.41403205733267E-04, 1.79649552180094E-04],
-                                       [8.55704192307081E-04, 3.75876937069012E-04],
-                                       [5.53009422954219E-04, 6.13842956242344E-04]]
-                self.oa.thermo_microscope.patterning.create_polygon(pt_needle_pattern, 5e-4)
-                self.oa.thermo_microscope.patterning.start()
-                time.sleep(process_time)
-                self.oa.thermo_microscope.patterning.stop()
-                self.oa.thermo_microscope.patterning.clear_patterns()
-                pt_needle.retract()
-
-                #else:
-                #    raise RuntimeError("Stage position not correct for sputtering.")
+                self.oa.fib_microscope.move_stage_absolute(target_stage_position)
+                if self.oa.stage_position_within_limits(limit=5,
+                                                target_position=target_stage_position) is True:
+                    pt_needle = self.oa.thermo_microscope.gas.get_gis_port('Pt dep')
+                    pt_needle.insert()
+                    pt_needle_pattern =[[1.45651561426744E-04, 6.64882312424326E-04],
+                                           [-5.22964004557272E-04, 6.49570505569732E-04],
+                                          [-7.27121429285215E-04, 5.27076050732976E-04],
+                                           [-8.8862682243944E-04, 1.94128991749241E-04],
+                                           [-9.31558247406688E-04, -5.13542946156679E-05],
+                                           [-8.72306303805652E-04, -2.80703364890847E-04],
+                                           [-7.64395328406466E-04, -4.54857094726658E-04],
+                                           [-6.11405614772345E-04, -5.85789981686577E-04],
+                                           [-2.96417971236887E-04, -6.63272670403714E-04],
+                                           [-8.32068785097803E-06, -6.70840422732026E-04],
+                                           [4.55219705511043E-04, -6.62604481026923E-04],
+                                           [7.96403352747065E-04, -4.63087459197467E-04],
+                                           [9.49574359688812E-04, -1.63231241628326E-04],
+                                           [9.41403205733267E-04, 1.79649552180094E-04],
+                                           [8.55704192307081E-04, 3.75876937069012E-04],
+                                           [5.53009422954219E-04, 6.13842956242344E-04]]
+                    self.oa.thermo_microscope.patterning.create_polygon(pt_needle_pattern, 5e-4)
+                    self.oa.thermo_microscope.patterning.start()
+                    time.sleep(process_time)
+                    self.oa.thermo_microscope.patterning.stop()
+                    self.oa.thermo_microscope.patterning.clear_patterns()
+                    pt_needle.retract()
+                else:
+                    raise RuntimeError("Stage position not correct for sputtering.")
             else:
                 raise RuntimeError("Automatic Sputter/GIS Setup not available for this tool.")
-
+        pt_needle = self.oa.thermo_microscope.gas.get_gis_port('Pt dep')
+        pt_needle.retract()
     def setup_gis(self, process_time):
         if process_time == 0:
             print(f"GIS step is skipped.")
@@ -100,7 +100,6 @@ class GisSputterAutomation:
             #         elif self.tool == 'Hydra':
             multichem_needle = self.oa.thermo_microscope.gas.get_multichem()
             multichem_needle.turn_heater_on('CRYO Pt ')
-            #             if multichem_needle.state == 'Retracted':
             multichem_needle.insert()
             self.oa.thermo_microscope.beams.ion_beam.turn_on()
             self.oa.thermo_microscope.beams.ion_beam.source.plasma_gas.value = 'Argon'

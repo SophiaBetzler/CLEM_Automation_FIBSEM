@@ -1,22 +1,23 @@
 from Basic_Functions import BasicFunctions, OverArch
 # from Fluorescence import Fluorescence
-# from Imaging import Imaging
+from Imaging import Imaging
 from GIS_Sputter_Setup import GisSputterAutomation
 # from Fiducial_Identification import FiducialID
 # from Automatic_CLEM import *
-# from TriCoincidence import AutomatedTriCoincidence
+from TriCoincidence import AutomatedTriCoincidence
 # from Milling import MillingSetup
 # import numpy as np
 # from EucentricHeight import EucentricHeight
 
 
 oa = OverArch()
-gis = GisSputterAutomation(oa)
+#gis = GisSputterAutomation(oa)
+AutomatedTriCoincidence(oa)
 
 
 # bf = BasicFunctions(manufacturer='Thermo',
 #                 ip='192.168.0.1',
-#                 tool='Hydra 5 Hydra UX',
+#                 tool='Helios 5 Hydra UX',
 #                 pc_type='windows')
 
 ### I removed the path, important for the CLEM pipeline
@@ -27,7 +28,6 @@ gis = GisSputterAutomation(oa)
 # You can sent the grid number to the OverArch function and then it is accessible for all other functions. How and when
 # Should this be done?
 # The function to do this is self.oa.set_variable("name", value)
-# AutomatedTriCoincidence()
 
 #gis = GisSputterAutomation()
 

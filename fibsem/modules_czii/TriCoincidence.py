@@ -61,43 +61,51 @@ class TriCoincidence:
         self.hfw = 80.0e-6
         self.auto_gis = GisSputterAutomation(self.oa)
         self.lock  = threading.Lock()
-        self.milling_stop_event = threading.Event()
+        self.tri_stop_event = threading.Event()
 
 
 #######################################################################################################################
 #####       Functions controlling the Arctis
 #######################################################################################################################
 
-    def grab_fl_live_image(self):
+    def grab_fl_live_image(self, save=True):
         if self.oa.manufacturer != 'Demo':
             self.oa.thermo_microscope.imaging.set_active_view(3)
             image = self.oa.thermo_microscope.imaging.get_image()
             #image.save(os.path.join(self.oa.temp_folder_path, f"fl_image.tif"))
-            tifffile.imwrite(os.path.join(self.oa.temp_folder_path, f"fl_image.tif"), image.data)
+            if save is True:
+                tifffile.imwrite(os.path.join(self.oa.temp_folder_path, f"fl_image.tif"), image.data)
         else:
             image = np.random.rand(1536, 1024)
-            tifffile.imwrite(os.path.join(self.oa.temp_folder_path, f"fl_image.tif"), image)
+            if save is True:
+                tifffile.imwrite(os.path.join(self.oa.temp_folder_path, f"fl_image.tif"), image)
         return image
 
     def grab_fluorescence_image(self, row, add_on):
-        self.oa.thermo_microscope.imaging.set_active_device(3)
-        self.oa.thermo_microscope.imaging.set_active_device(8)
-        self.oa.thermo_microscope.detector.camera_settings.binning.value = self.position_data[row]['fl_settings']
-        ['binning']
-        self.oa.thermo_microscope.detector.brightness.value = self.position_data[row]['brightness']
-        self.oa.thermo_microscope.detector.camera_settings.exposure_time.value = self.position_data[row]['fl_settings']
-        ['exposure_time']
-        self.oa.thermo_microscope.detector.camera_settings.filter.value = self.position_data[row]['fl_settings']
-        ['filter_setting']
-        self.oa.thermo_microscope.detector.camera_settings.color.value = self.position_data[row]['fl_settings']
-        ['emission_color']
-        self.oa.thermo_microscope.detector.camera_settings.focus.value = self.position_data[row]['fl_settings']
-        ['objective_focus']
-        image = self.oa.thermo_microscope.imaging.grab_frame()
-        image.save(os.path.join(self.oa.folder_path, f"{row}_fl_image_{add_on}.tif"))
+        if self.oa.manufacturer != 'Demo':
+            self.oa.thermo_microscope.imaging.set_active_device(3)
+            self.oa.thermo_microscope.imaging.set_active_device(8)
+            self.oa.thermo_microscope.detector.camera_settings.binning.value = self.position_data[row]['fl_settings']
+            ['binning']
+            self.oa.thermo_microscope.detector.brightness.value = self.position_data[row]['brightness']
+            self.oa.thermo_microscope.detector.camera_settings.exposure_time.value = self.position_data[row]['fl_settings']
+            ['exposure_time']
+            self.oa.thermo_microscope.detector.camera_settings.filter.value = self.position_data[row]['fl_settings']
+            ['filter_setting']
+            self.oa.thermo_microscope.detector.camera_settings.color.value = self.position_data[row]['fl_settings']
+            ['emission_color']
+            self.oa.thermo_microscope.detector.camera_settings.focus.value = self.position_data[row]['fl_settings']
+            ['objective_focus']
+            image = self.oa.thermo_microscope.imaging.grab_frame(save=False)
+            image.save(os.path.join(self.oa.folder_path, f"{row}-Dataset", f"{row}_fl_image_{add_on}.tif"))
+        else:
+            image = np.random.rand(1536, 1024)
+            tifffile.imwrite(os.path.join(self.oa.temp_folder_path, f"{row}_fl_image_{add_on}.tif"), image)
 
-    def run_serial_acquisition_fl_images(self, row, fl_settings, update_callback=None):
+    def run_serial_acquisition_fl_images(self, row, fl_settings, update_callback, stop_event):
         self.image_queue = queue.Queue(maxsize=2000)
+        os.makedirs(os.path.join(self.oa.folder_path, f"{row}-Dataset"))
+        self.tri_stop_event.clear()
         if self.oa.manufacturer != 'Demo':
             self.oa.thermo_microscope.imaging.set_active_view(3)
             self.oa.thermo_microscope.imaging.set_active_device(8)
@@ -111,13 +119,12 @@ class TriCoincidence:
             writer_thread.start()
 
             if fl_settings['roi'] is not None:
-                x_data = []
-                y_data = []
+                self.x_data = []
+                self.y_data = []
                 start_time = datetime.now()
-                run_tricoincidence_experiment = True
-                i=0
+                i = 0
                 if self.oa.thermo_microscope.imaging.state == ImagingState.ACQUIRING:
-                    while run_tricoincidence_experiment is True:
+                    while not stop_event.is_set():
                         now = datetime.now()
                         timestamp = (now - start_time).total_seconds()
                         image = self.oa.thermo_microscope.imaging.get_image()
@@ -126,61 +133,67 @@ class TriCoincidence:
                                                                                           fl_settings['emission_color'])
                         av_intensity = np.nanmean(image.data[fl_settings['roi'][0]:fl_settings['roi'][1],
                                                   fl_settings['roi'][2]: fl_settings['roi'][3]])
-                        x_data.append(timestamp)
-                        y_data.append(av_intensity)
+                        self.x_data.append(timestamp)
+                        self.y_data.append(av_intensity)
                         if update_callback:
                             update_callback(timestamp, av_intensity)
-                        ### DESIGN THE FITTING FUNCTION HERE
-                        run_tricoincidence_experiment = self.intensity_profile_analysis(y_data, f)
-                        i+=1
+                        i += 1
                 self.oa.thermo_microscope.detector.camera_settings.emission.stop()
                 self.oa.thermo_microscope.imaging.stop_acquisition()
                 self.image_queue.put(None)
                 writer_thread.join()
-            ### POTENTIALLY JUST DIRECTLY WRITE THE DATA TO THE DISK HERE, CHECK WHERE IMAGE_WRITER STORES THE FILES
-                self.tricoincidence_result_queue = (x_data, y_data)
+                data = np.vstack([self.x_data, self.y_data]).T
+                np.save(os.path.join(self.oa.folder_path, f"{row}-Dataset", "Intensity_Data.npy"),
+                        data)
             else:
                 raise RuntimeError('No ROI selected!')
         else:
-            x_data = []
-            y_data = []
+            self.x_data = []
+            self.y_data = []
             start_time = datetime.now()
             writer_thread = threading.Thread(target=self.image_writer, args=(row,), daemon=True)
             writer_thread.start()
-            run_tricoincidence_experiment = True
-            i = 0
-            while run_tricoincidence_experiment is True:
+            i=0
+            while not stop_event.is_set():
                 now = datetime.now()
                 timestamp = (now - start_time).total_seconds()
                 image = np.random.rand(1536, 1024)
                 self.image_queue.put((image.copy(), i))
                 av_intensity = np.nanmean(image[100:200,
                                           140:200])
-                x_data.append(timestamp)
-                y_data.append(av_intensity)
+                self.x_data.append(timestamp)
+                self.y_data.append(av_intensity)
                 if update_callback:
                     update_callback(timestamp, av_intensity)
                 i += 1
             self.image_queue.put(None)
             writer_thread.join()
-            self.tricoincidence_result_queue = (x_data, y_data)
+            data = np.vstack([self.x_data, self.y_data]).T
+            np.save(os.path.join(self.oa.folder_path, f"{row}-Dataset", "Intensity_Data.npy"),
+                    data)
 
     def run_move_to_stored_location(self, row):
-        try:
-            self.oa.autoloader_control(self.position_data[row]["grid"])
-            stored_stage_position = self.oa.fib_microscope.move_stage_absolute(self.position_data[row]['stage_position'])
-            if self.oa.stage_position_within_limits(limit=10,
-                                                    target_position=stored_stage_position) is True:
-                image = tifffile.imread(os.path.join(self.oa.folder_path, f"{row}-image_ib.tif"))
-                shift_x, shift_y = self.stage_position_correction(image)
-                self.oa.fib_microscope.move_stage_relative(FibsemStagePosition(x=shift_x, y=-shift_y))
-                self.oa.thermo_microscope.detector.camera_settings.focus.value = self.position_data[row]['fl_settings']['objective_focus']
-                return True
-            else:
+        if self.oa.manufacturer != 'Demo':
+            try:
+                self.oa.thermo_microscope.imaging.set_active_device(8)
+                self.oa.thermo_microscope.detector.retract()
+                self.oa.autoloader_control(self.position_data[row]["grid"])
+                stored_stage_position = self.oa.fib_microscope.move_stage_absolute(self.position_data[row]['stage_position'])
+                if self.oa.stage_position_within_limits(limit=10,
+                                                        target_position=stored_stage_position) is True:
+                    image = tifffile.imread(os.path.join(self.oa.folder_path, f"{row}-image_ib.tif"))
+                    shift_x, shift_y = self.stage_position_correction(image)
+                    self.oa.fib_microscope.move_stage_relative(FibsemStagePosition(x=shift_x, y=-shift_y))
+                    self.oa.thermo_microscope.detector.camera_settings.focus.value = self.position_data[row]['fl_settings']['objective_focus']
+                    return True
+                else:
+                    return False
+            except Exception as e:
+                print(f"Moving back to the stored position failed because of: {e}")
                 return False
-        except Exception as e:
-            print(f"Moving back to the stored position failed because of: {e}")
-            return False
+        else:
+            print('Moved stage.')
+            return True
 
     def stage_position_correction(self, reference_image):
         current_image = self.imaging.acquire_image(hfw=self.hfw, beam_type='ion', save=False, autofocus=True)
@@ -188,8 +201,13 @@ class TriCoincidence:
         pixelsize = self.hfw / np.shape(current_image.data)[1]
         return shift[0]*pixelsize, shift[1]*pixelsize
 
-    def stop_milling_tricoincidence(self):
-        self.milling_stop_event.set()
+    def milling_tricoincidence(self, beam_current, stop_event):
+        while not stop_event.is_set():
+            time.sleep(0.5)
+            print('Milling running ...')
+        print('Milling stopped.')
+
+
 
 #######################################################################################################################
 #####       Functions required for the manual sample setup
@@ -293,57 +311,67 @@ class TriCoincidence:
 #####       Functions required for the automatic processing
 #######################################################################################################################
 
-    def run_tricoincidence_experiment(self, fl_settings, row, beam_current, fitting_parameters):
-        serial_acquisition_thread = threading.Thread(target=self.run_serial_acquisition_fl_images,
-                                                       args=(row, fl_settings))
-        milling_thread = threading.Thread(target=self.milling_tricoincidence, args=(beam_current,))
-        serial_acquisition_thread.start()
-        milling_thread.start()
+    def run_tricoincidence_experiment(self, beam_current, callback, stop_event, test=False, row=None):
+        if test is False:
+            for i in range(len(self.position_data)):
+                fl_settings = self.position_data[i]['fl_settings']
+                print("[INFO] Moving to stored sample position and insert iFLM objective to stored focus ...")
+                status_update = self.run_move_to_stored_location(i)
+                if status_update is True:
+                    self.grab_fluorescence_image(i, add_on='before')
+                    print("[INFO] Performing the fluorescence experiment ...")
+                    self.milling_thread = threading.Thread(target=self.milling_tricoincidence,
+                                                           args=(beam_current, stop_event))
+                    self.imaging_thread = threading.Thread(target=self.run_serial_acquisition_fl_images,
+                                                           args=(i, fl_settings, callback, stop_event))
+                    self.milling_thread.start()
+                    self.imaging_thread.start()
 
-        self.tricoincidence_result_queue = queue.Queue()  # Maybe not needed
-
-
-    def stop_tricoincidence_experiment(self):
-        "stop milling and imaging functions in parallel and write data to disk."
-
-    def run_automated_experiment(self):
-        for i in range(len(self.position_data)):
-            fl_settings = self.position_data[i]['fl_settings']
-            self.oa.thermo_microscope.imaging.set_active_device(8)
-            self.oa.thermo_microscope.detector.retract()
-            print("Retracting objective ...")
-            status_update = self.run_move_to_stored_location(i)
-            print("Moving to stored sample position and insert iFLM objective to stored focus...")
-            if status_update is True:
-                self.grab_fluorescence_image(i, add_on='before')
-                print("Performing tricoincidence experiment ...")
-                self.run_tricoincidence_experiment(fl_settings)
-                print("Finished tricoincidence milling experiment.")
-
-    def run_test_experiment(self, row, update_callback):
-        self.tricoincidence_result_queue = queue.Queue()
-
-        if self.oa.manufacturer != 'Demo':
-            self.oa.thermo_microscope.imaging.set_active_device(8)
-            self.oa.thermo_microscope.detector.retract()
-            print("Retracting objective ...")
-            status_update = self.run_move_to_stored_location(row)
-            print("Moving to stored sample position and insert iFLM objective to stored focus...")
-            self._running = True
-            #### HERE I SHOULD ALSO MAKE SURE TO INCLUDE THE IMAGE ACQUISITION
-            self.run_serial_acquisition_fl_images(row=row,
-                                                  fl_settings=self.position_data[row]['fl_settings'],
-                                                  update_callback=update_callback)
         else:
-            self._running = True
-            self.run_serial_acquisition_fl_images(row=row,
-                                                 fl_settings=self.position_data[row]['fl_settings'],
-                                                 update_callback=update_callback)
+            fl_settings = self.position_data[row]['fl_settings']
+            print("[INFO] Moving to stored sample position and insert iFLM objective to stored focus ...")
+            status_update = self.run_move_to_stored_location(row)
+            if status_update is True:
+                self.grab_fluorescence_image(row, add_on='before')
+                print("[INFO] Performing the fluorescence experiment ...")
+                self.milling_thread = threading.Thread(target=self.milling_tricoincidence,
+                                                       args=(beam_current, stop_event))
+                self.imaging_thread = threading.Thread(target=self.run_serial_acquisition_fl_images,
+                                                       args=(row, fl_settings, callback, stop_event))
+                self.milling_thread.start()
+                self.imaging_thread.start()
 
 
-    def stop_test_experiment(self):
-        self._running = False
-        self.milling_stop_event.set()
+    def id_intensity_drop(self, timestamp, intensity):
+        print(f"The timestamp is {timestamp}, the intensity is {intensity}.")
+        time.sleep(10)
+        self.tri_stop_event.set()
+
+
+
+
+    # def run_test_experiment2(self, row, update_callback):
+    #     if self.oa.manufacturer != 'Demo':
+    #         self.oa.thermo_microscope.imaging.set_active_device(8)
+    #         self.oa.thermo_microscope.detector.retract()
+    #         print("Retracting objective ...")
+    #         status_update = self.run_move_to_stored_location(row)
+    #         print("Moving to stored sample position and insert iFLM objective to stored focus...")
+    #         self._running = True
+    #         #### HERE I SHOULD ALSO MAKE SURE TO INCLUDE THE IMAGE ACQUISITION
+    #         self.run_serial_acquisition_fl_images(row=row,
+    #                                               fl_settings=self.position_data[row]['fl_settings'],
+    #                                               update_callback=update_callback)
+    #     else:
+    #         self._running = True
+    #         self.run_serial_acquisition_fl_images(row=row,
+    #                                              fl_settings=self.position_data[row]['fl_settings'],
+    #                                              update_callback=update_callback)
+    #         serial_acquisition_thread = threading.Thread(target=self.run_serial_acquisition_fl_images,
+    #                                                      args=(row, fl_settings))
+    #         milling_thread = threading.Thread(target=self.milling_tricoincidence, args=(beam_current,))
+    #         serial_acquisition_thread.start()
+    #         milling_thread.start()
 
     def image_writer(self, row):
         while True:
@@ -668,15 +696,17 @@ class GUIforTriCoincidence(QWidget):
 #####       Functions which control the automatic tricoincidence experiment
 #######################################################################################################################
 
-    def experiment_test(self):
+    def run_test_experiment(self):
         selected = self.table.selectionModel().selectedRows()
         if selected:
             row = selected[0].row()
-            self.tricoincidence.run_move_to_stored_location(row)
-            self.tricoincidence.run_test_experiment()
+            self.tricoincidence.run_tricoincidence_experiment(row=row, beam_current=0.2,
+                                                            callback=self.update_plot,
+                                                            stop_event=self.tricoincidence.tri_stop_event)
 
     def progress_start_button_clicked(self):
-        self.tricoincidence.run_automated_experiment()
+        #self.tricoincidence.run_tricoincidence_experiment(row=row, beam_current=beam_current)
+        print('Start button clicked.')
 
     def progress_abort_button_clicked(self):
        print("Abort button clicked.")
@@ -755,6 +785,7 @@ class GUIforTriCoincidence(QWidget):
         def update_plot(timestamp, intensity):
             if not self.test_experiment_running:
                 return
+
             x_data.append(timestamp)
             y_data.append(intensity)
             line.set_data(x_data, y_data)
@@ -765,24 +796,13 @@ class GUIforTriCoincidence(QWidget):
 
         def stop_test_experiment(event=None):
             print("Stop button pressed.")
-            self.test_experiment_running = False
-            self.tricoincidence.stop_test_experiment()
+            self.tricoincidence.tri_stop_event.set()
 
-        def start_test_experiment():
-            self.test_thread = threading.Thread(
-                            target=self.tricoincidence.run_test_experiment,
-                            args=(row, update_plot))
-            self.test_thread.start()
-
-            try:
-                while self.test_thread.is_alive():
-                    if not self.test_experiment_running:
-                        break
-                    plt.pause(0.1)
-            except KeyboardInterrupt:
-                stop_test_experiment()
-                self.test_thread.join()
-                print("Stopped.")
+        def start_test_experiment(row):
+            self.tricoincidence.run_tricoincidence_experiment(beam_current=0.2,
+                                                              row=row,
+                                                              callback=update_plot,
+                                                              stop_event=self.tricoincidence.tri_stop_event)
 
         def stop_test_experiment_after_delay(obj, delay_seconds):
             time.sleep(delay_seconds)
@@ -812,7 +832,8 @@ class GUIforTriCoincidence(QWidget):
         stop_button.on_clicked(stop_test_experiment)
         plt.ion()
         plt.show()
-        start_test_experiment()
+
+        start_test_experiment(row)
 
 
 

@@ -208,6 +208,7 @@ class BasicFunctions:
         def looks_like_path(s):
             return "/" in s or "\\" in s or s.endswith(('.yaml', '.yml', '.json', '.txt')) or os.path.isabs(s)
 
+
         if looks_like_path(file) is False:
             path = os.path.join(self.project_root, 'modules_czii', file + '.yaml')
         else:

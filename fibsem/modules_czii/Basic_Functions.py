@@ -13,12 +13,16 @@ from aicsimageio import AICSImage
 import xml.etree.ElementTree as ET
 from PIL import Image
 from PIL.TiffTags import TAGS
+from dataclasses import dataclass
 import json
 import tifffile
 import platform
+import threading
 ### HERE THE CORRECT PATH TO AUTOSCRIPT CLIENT MUST BE ADDED
-sys.path.append("C:\Program Files\Thermo Scientific AutoScript")
-sys.path.append("C:\Program Files\Enthought\Python\envs\AutoScript\Lib\site-packages")
+sys.path.append("C:\\Program Files\\Thermo Scientific AutoScript")
+sys.path.append("C:\\Program Files\\Enthought\\Python\\envs\\AutoScript\\Lib\\site-packages")
+sys.path.append("C:\\Program Files\\Enthought\\Python\\envs\\AutoScript")
+sys.path.append("C:\\Program Files\\Enthought\\Python\envs\\AutoScript\\Lib\\site-packages\\autoscript_sdb_microscope_client")
 #from autoscript_sdb_microscope_client import SdbMicroscopeClient
 
 def error_message(text):
@@ -72,26 +76,79 @@ class BasicFunctions:
         self.fib_microscope, self.fib_settings = self.connect_to_microscope()
 
 
-    def socket_communication(self, target_pc, function, args):
+    def socket_communication(self, target_pc, function, args, role=None):
         if target_pc == 'Meteor_PC':
             SERVER_IP = '10.50.2.119'
             PORT = 23924
+            if role is None:
+                role = 'server'
+        elif target_pc == 'Microscope_PC_Hydra':
+            SERVER_IP = ''
+            PORT = ''
+            if role is None:
+                role = 'client'
+        elif target_pc == 'Support_PC_Hydra':
+            SERVER_IP = ''
+            PORT = ''
+            if role is None:
+                role = 'client'
         else:
             print('Please specify the target PC.')
+            return
         command = f"{function} {args}"
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.connect((SERVER_IP, PORT))
-            s.sendall(command.encode("utf-8"))
+        if role == 'client':
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.connect((SERVER_IP, PORT))
+                s.sendall(command.encode("utf-8"))
 
-            size = int.from_bytes(s.recv(8), 'big')
-            data = b""
-            while len(data) < size:
-                chunk = s.recv(min(4096, size - len(data)))
-                if not chunk:
-                    break
-                data += chunk
-                import pickle
-                return pickle.loads(data)
+                size = int.from_bytes(s.recv(8), 'big')
+                data = b""
+                while len(data) < size:
+                    chunk = s.recv(min(4096, size - len(data)))
+                    if not chunk:
+                        break
+                    data += chunk
+                    import pickle
+                    return pickle.loads(data)
+        elif role == 'server':
+            def handle_client(conn, addr):
+                print(f"[SERVER] Connection from {addr}")
+                try:
+                    command_str = conn.recv(1024).decode("utf-8")
+                    print(f"[SERVER] Received command: {command_str}")
+                    func_name, *arg_str = command_str.strip().split(maxsplit=1)
+                    parsed_args = eval(arg_str[0]) if arg_str else {}
+
+                    if hasattr(self, func_name):
+                        method = getattr(self, func_name)
+                        result = method(parsed_args) if parsed_args else method()
+                    else:
+                        result = f"[ERROR] Unknown function '{func_name}'"
+                except Exception as e:
+                    result = f"[EXCEPTION] {e}"
+
+                data = pickle.dumps(result)
+                conn.send(len(data).to_bytes(8, 'big'))
+                conn.sendall(data)
+                conn.close()
+                print("[SERVER] Connection closed.")
+
+            def start_server():
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.bind((SERVER_IP, PORT))
+                    s.listen()
+                    print(f"[SERVER] Listening on {SERVER_IP}:{PORT}...")
+                    while True:
+                        conn, addr = s.accept()
+                        thread = threading.Thread(target=handle_client, args=(conn, addr), daemon=True)
+                        thread.start()
+
+            # Start server loop in a background thread if needed
+            server_thread = threading.Thread(target=start_server, daemon=True)
+            server_thread.start()
+            print("[SERVER] Server started.")
+        else:
+            raise ValueError(f"Invalid role: {role}")
 
     def execute_external_script(self, script, dir_name, parameter=None):
         """
@@ -140,28 +197,44 @@ class BasicFunctions:
             error_message(f"Connection to microscope failed: {e}")
             sys.exit()
 
-    def read_from_yaml(self, filename, imaging_settings_yaml=True):
+    def read_from_yaml(self, file, imaging_settings_yaml=True):
         """
         User generated yaml file with the basic settings for imaging with the ion/electron beam.
         """
-
         def calc_constructor(loader, node):
             value = loader.construct_scalar(node)
-            # Evaluate the expression safely (be cautious with eval in production)
             return eval(value)
 
-        yaml.add_constructor('!calc', calc_constructor)
-        print(filename)
-        with open(os.path.join(self.project_root, 'modules_czii', filename + '.yaml')) as file:
-            dictionary = yaml.load(file, Loader=yaml.FullLoader)
-        for key in dictionary:
-            if key == 'scan_rotation':
-                dictionary[key] = np.deg2rad(dictionary[key])
-        if imaging_settings_yaml is True:
-            imaging_settings = structures.ImageSettings.from_dict(dictionary)
-            return imaging_settings, dictionary
+        def looks_like_path(s):
+            return "/" in s or "\\" in s or s.endswith(('.yaml', '.yml', '.json', '.txt')) or os.path.isabs(s)
+
+        if looks_like_path(file) is False:
+            path = os.path.join(self.project_root, 'modules_czii', file + '.yaml')
         else:
-            return dictionary
+            path = file
+
+        yaml.add_constructor('!calc', calc_constructor)
+        with open(path) as file:
+            dictionary = yaml.load(file, Loader=yaml.FullLoader)
+        if isinstance(dictionary, dict) and all(not isinstance(v, dict) for v in dictionary.values()):
+            if 'scan_rotation' in dictionary:
+                dictionary['scan_rotation'] = np.deg2rad(dictionary['scan_rotation'])
+            imaging_settings = structures.ImageSettings.from_dict(dictionary)
+        elif isinstance(dictionary, dict) and all(isinstance(v, dict) for v in dictionary.values()):
+            imaging_settings = {}
+            for tool, tool_dict in dictionary.items():
+                if 'scan_rotation' in tool_dict:
+                    tool_dict['scan_rotation'] = np.deg2rad(tool_dict['scan_rotation'])
+                imaging_settings[tool] = structures.ImageSettings.from_dict(tool_dict)
+        else:
+            raise RuntimeWarning("YAML format is not supported.")
+
+        if imaging_settings_yaml is not True:
+             return dictionary
+        else:
+             imaging_settings = structures.ImageSettings.from_dict(dictionary)
+             return imaging_settings, dictionary
+
 
     def read_from_dict(self, filename):
         """
@@ -315,29 +388,56 @@ class BasicFunctions:
         else:
             print('Stage position retrieval not valid.')
 
-    def autoloader_control(self):
+    def id_available_grids(self):
         if self.manufacturer != 'Demo':
-
-            self.available_grids = self.thermo_microscope.specimen.autoloader.get_slots(False)
+            self.docked_grids = self.thermo_microscope.specimen.autoloader.get_slots(False)
             inventory_done = False
-            for grid_slot in self.available_grids:
+            for grid_slot in self.docked_grids:
                 if grid_slot.state != 'Unknown':
                     inventory_done = True
             if inventory_done is not True:
-                self.available_grids = self.thermo_microscope.specimen.autoloader.get_slots(True)
-
-            self.grid_numbers = []
-            for i in len(self.available_grids):
-                if self.available_grids[i].state == "Occupied":
-                    self.grid_numbers.append(i)
+                self.docked_grids = self.thermo_microscope.specimen.autoloader.get_slots(True)
+            self.thermo_microscope.autoloader.unload()
+            self.available_grids = []
+            for grid in self.docked_grids:
+                if grid.state == "Occupied":
+                    self.available_grids.append(grid)
         else:
-            self.grid_numbers = [1, 3, 5, 6]
+            @dataclass
+            class Grid:
+                id: int
+                state: str
+            self.available_grids = [Grid(id=1, state='Occupied'),
+                                    Grid(id=3, state='Empty'),
+                                    Grid(id=4, state='Occupied'),
+                                    Grid(id=6, state='Occupied')]
+
+    def autoloader_control(self, new_grid_id=None):
+        if self.manufacturer != 'Demo' and self.tool == 'Arctis':
+            self.loaded_grid = None
+            docked_grids = self.thermo_microscope.specimen.autoloader.get_slots(False)
+            for docked_grid in docked_grids:
+                for grid in self.available_grids:
+                    if docked_grid.id == grid.id and docked_grid.state == 'Empty':
+                        self.loaded_grid = grid
+                        print(f"The loaded grid is {self.loaded_grid.id}")
+                        break
+            if new_grid_id is None:
+                return
+            elif new_grid_id != self.loaded_grid.id or self.loaded_grid is None:
+                self.thermo_microscope.specimen.autoloader.load(new_grid_id)
+
+
+
+
+
 
 
 class OverArch(BasicFunctions):
     def __init__(self):
         super().__init__()
         print("CoreController ready")
+        self.id_available_grids()
 
     def set_variable(self, name, value):
         setattr(self, name, value)

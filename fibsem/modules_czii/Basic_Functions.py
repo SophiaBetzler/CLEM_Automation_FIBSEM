@@ -19,7 +19,7 @@ import platform
 ### HERE THE CORRECT PATH TO AUTOSCRIPT CLIENT MUST BE ADDED
 sys.path.append("C:\Program Files\Thermo Scientific AutoScript")
 sys.path.append("C:\Program Files\Enthought\Python\envs\AutoScript\Lib\site-packages")
-#from autoscript_sdb_microscope_client import SdbMicroscopeClient
+from autoscript_sdb_microscope_client import SdbMicroscopeClient
 
 def error_message(text):
     messagebox.showerror("Error", text)

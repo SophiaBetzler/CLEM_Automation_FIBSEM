@@ -1,0 +1,11 @@
+### CHANGE THESE VALUES IF YOU WANT TO CUSTOMIZE THE SETUP
+
+Hydra:
+  voltage: 12000
+  beam_current: 0.15e-6
+  plasma_source: 'Xenon'
+
+Arctis:
+  voltage: 12000
+  beam_current: 70.0e-9
+  plasma_source: 'Xenon'

@@ -2,7 +2,7 @@
 
 Hydra:
   voltage: 12000
-  beam_current: 0.15e-6
+  beam_current: 10.0e-9
   plasma_source: 'Xenon'
 
 Arctis:

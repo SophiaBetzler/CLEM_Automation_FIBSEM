@@ -2,75 +2,58 @@ from Basic_Functions import OverArch
 from fibsem import utils, structures, microscope
 from fibsem.structures import FibsemStagePosition
 from GIS_Sputter_Setup import GisSputterAutomation
-import matplotlib
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.figure import Figure
-import copy
-import queue
+from CoincidenceFunctions import CoincidenceFunctions
+
 import platform
 import time
+import numpy as np
+import sys
+import json
+import os
+import tifffile
+import cv2
+import threading
+import statistics
+import matplotlib
 pc_type = platform.system()
 if pc_type == 'Windows':
     matplotlib.use('Qt5Agg')
 elif pc_type == 'Darwin':
     matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as plt
-import numpy as np
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.widgets import RectangleSelector, Button
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 
-#from autoscript_sdb_microscope_client import SdbMicroscopeClient
-import sys
 from PyQt5.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QHBoxLayout, QFrame, QMessageBox, QFormLayout, QLineEdit,
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QFrame, QMessageBox, QFormLayout, QLineEdit,
     QTableWidget, QTableWidgetItem, QPushButton, QLabel, QSpinBox, QCheckBox, QGridLayout, QFileDialog,
-    QDialog
+    QDialog, QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QGraphicsRectItem
 )
-from PyQt5.QtCore import Qt, QEventLoop, QObject, pyqtSignal, QThread, QTimer, QMetaObject
-from PyQt5.QtGui import QBrush, QColor, QIcon
-from PyQt5.QtCore import Qt
-from collections import namedtuple
-import json
-import matplotlib.image as mpimg
-import os
-from Imaging import Imaging
-import tifffile
-import cv2
-import threading
-from datetime import datetime
-import statistics
-from collections import deque
-import sys
-import numpy as np
-import cv2
-from PyQt5.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit,
-    QPushButton, QGridLayout, QLabel, QGraphicsView, QGraphicsScene,
-    QGraphicsPixmapItem, QGraphicsRectItem
-)
-from PyQt5.QtGui import QImage, QPixmap, QPen, QColor
-from PyQt5.QtCore import QTimer, QRectF, Qt, QPointF
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from PyQt5.QtCore import Qt, QEventLoop, QObject, pyqtSignal, QThread, QTimer, QMetaObject, QRectF, QPointF
+from PyQt5.QtGui import QBrush, QColor, QIcon, QImage, QPixmap, QPen
 
 
-
-class AutomatedTriCoincidenceGUI:
+class CoincidenceGUI:
     """
     Sole purpose of this class is to open the GUI controlling the process.
     """
-    def __init__(self, oa, coin, mode):
+    def __init__(self, oa, mode):
         self.oa = oa
         self.mode = mode
-        self.coincidence = coin
+        self.coincidence = CoincidenceFunctions(oa=self.oa, mode=self.mode)
         self.app = QApplication(sys.argv)
-        self.auto_gui_window = AutoCoincidenceGUI(self.oa)
-        self.manual_gui_window = ManualCoincidenceGUI()
+        self.auto_gui_window = AutoCoincidenceGUI(self.oa, self.coincidence)
+        self.manual_gui_window = ManualCoincidenceGUI(self.oa, self.coincidence)
         self.run()
 
     def run(self):
         if self.mode == 'manual':
-            self.manual_gui_window.show()
+            manual_win = QMainWindow()
+            manual_widget = self.manual_gui_window
+            manual_win.setCentralWidget(manual_widget)
+            manual_win.setWindowTitle('Tool to perform manual coincidence experiment on the Arctis.')
+            manual_win.resize(1200, 800)
+            manual_win.show()
         elif self.mode == 'auto':
             self.auto_gui_window.show()
         else:
@@ -88,10 +71,12 @@ class AutomatedTriCoincidenceGUI:
         if choice == QMessageBox.Abort:
             return
 
+########################################################################################################################
+### GUI Tools for the manual coincidence experiment ####################################################################
+########################################################################################################################
 
-
+### ROI selection tool #################################################################################################
 HANDLE_SIZE = 6
-
 class ResizableRectItem(QGraphicsRectItem):
     def __init__(self, rect):
         super().__init__(rect)
@@ -156,12 +141,15 @@ class ResizableRectItem(QGraphicsRectItem):
         self.handle_selected = None
         super().mouseReleaseEvent(event)
 
+### LiveViewer #########################################################################################################
+
 class ZoomableGraphicsView(QGraphicsView):
     def __init__(self, with_roi=False):
         super().__init__()
         self.scene = QGraphicsScene()
         self.setScene(self.scene)
         self.image_item = QGraphicsPixmapItem()
+        self.image_item.setPos(0, 0)
         self.scene.addItem(self.image_item)
         self.roi = None
         if with_roi:
@@ -180,13 +168,26 @@ class ZoomableGraphicsView(QGraphicsView):
         qimg = QImage(img_rgb.data, w, h, ch * w, QImage.Format_RGB888)
         pixmap = QPixmap.fromImage(qimg)
         self.image_item.setPixmap(pixmap)
+        self.image_item.update()
+        self.scene.update()
+        self.viewport().update()
 
     def get_roi_rect(self):
         if self.roi is None:
             return None
-        rect = self.roi.rect()
-        topLeft = self.roi.scenePos()
-        return QRectF(topLeft.x(), topLeft.y(), rect.width(), rect.height())
+
+        # Get ROI's rectangle in scene coordinates
+        roi_rect_in_scene = self.roi.mapRectToScene(self.roi.rect())
+
+        # Get image item's top-left scene position
+        image_top_left = self.image_item.scenePos()
+
+        # Offset ROI position relative to image
+        x = roi_rect_in_scene.left() - image_top_left.x()
+        y = roi_rect_in_scene.top() - image_top_left.y()
+        w = roi_rect_in_scene.width()
+        h = roi_rect_in_scene.height()
+        return QRectF(x, y, w, h)
 
     def get_roi_data(self):
         roi = self.get_roi_rect()
@@ -201,12 +202,21 @@ class ZoomableGraphicsView(QGraphicsView):
         else:
             self.scale(1 / self.scale_factor, 1 / self.scale_factor)
 
-class ManualCoincidenceGUI(QWidget):
-    def __init__(self):
-        super().__init__()
 
+### Main GUI window which uses the other two as helpers ################################################################
+
+class ManualCoincidenceGUI(QWidget):
+    image_received = pyqtSignal(object, float)
+    def __init__(self, oa, coin):
+        super().__init__()
+        self.oa = oa
+        self.coincidence = coin
+        self.coincidence.on_experiment_stopped = self.show_experiment_finished_message
         self.static_view = ZoomableGraphicsView(with_roi=True)
         self.dynamic_view = ZoomableGraphicsView(with_roi=False)
+        self.image_received.connect(self.update_dynamic_image)
+        self.x_data = []
+        self.y_data = []
 
         self.figure, (self.ax_line, self.ax_hist) = plt.subplots(1, 2, figsize=(8, 4))
         self.canvas = FigureCanvas(self.figure)
@@ -224,10 +234,10 @@ class ManualCoincidenceGUI(QWidget):
         self.resume_button = QPushButton("Resume")
         self.stop_button = QPushButton("Stop")
 
-        self.start_button.clicked.connect(self.start_timer)
-        self.pause_button.clicked.connect(self.pause_timer)
-        self.resume_button.clicked.connect(self.resume_timer)
-        self.stop_button.clicked.connect(self.stop_timer)
+        self.start_button.clicked.connect(self.start_coincidence_experiment)
+        self.pause_button.clicked.connect(self.pause_coincidence_experiment)
+        self.resume_button.clicked.connect(self.resume_coincidence_experiment)
+        self.stop_button.clicked.connect(self.stop_coincidence_experiment)
 
         image_layout = QHBoxLayout()
         image_layout.addWidget(self.static_view)
@@ -255,36 +265,44 @@ class ManualCoincidenceGUI(QWidget):
         self.setLayout(vbox)
 
         self.vmin, self.vmax = 0, 255
-        self.static_img = np.random.randint(0, 255, (512, 512), dtype=np.uint8)
-        self.dynamic_img = np.random.randint(0, 255, (512, 512), dtype=np.uint8)
+        self.static_img = self.coincidence.grab_fluorescence_image(add_on='before')
+        self.dynamic_img = np.zeros((512, 512), dtype=np.uint8)
         self.update_static_image()
 
         self.timer = QTimer()
-        self.timer.timeout.connect(self.update_dynamic)
+        self.timer.timeout.connect(self.update_dynamic_image_view)
 
     def update_static_image(self):
-        self.static_view.update_image(self.static_img)
+        self.static_view.update_image(self.coincidence.grab_fluorescence_image(add_on='before'))
 
-    def update_dynamic(self):
-        self.dynamic_img = np.roll(self.dynamic_img, -1, axis=1)
-        self.dynamic_img[:, -1] = np.random.randint(0, 255, size=(512,))
+    def update_dynamic_image(self, image, timestamp):
+        self.dynamic_img = image
+        self.dynamic_view.update_image(image)
+        self.update_plot()
+
+    def update_dynamic_image_view(self):
+        if not hasattr(self, "dynamic_img"):
+            return
         self.dynamic_view.update_image(self.dynamic_img)
         self.update_plot()
 
     def update_plot(self):
         roi = self.static_view.get_roi_rect()
-        if roi is None:
-            return
-        x, y, w, h = int(roi.x()), int(roi.y()), int(roi.width()), int(roi.height())
-        roi_data = self.dynamic_view.image[y:y+h, x:x+w] if w > 0 and h > 0 else np.array([])
+        if roi:
+            x, y, w, h = int(roi.x()), int(roi.y()), int(roi.width()), int(roi.height())
+            roi_data = self.dynamic_view.image[y:y + h, x:x + w] if w > 0 and h > 0 else np.array([])
+            if roi_data.size > 0:
+                mean_intensity = roi_data.mean()
+                self.x_data.append(time.time())  # or your actual timestamp
+                self.y_data.append(mean_intensity)
 
-        if roi_data.size == 0:
-            return
-        line_profile = roi_data.mean(axis=0)
 
         self.ax_line.clear()
-        self.ax_line.plot(line_profile)
-        self.ax_line.set_title("ROI Line Profile (Dynamic Image)")
+        self.ax_line.plot(self.x_data, self.y_data, label="Mean ROI Intensity")
+        self.ax_line.set_xlabel("Time (s)")
+        self.ax_line.set_ylabel("Mean Intensity")
+        self.ax_line.set_title("ROI Intensity Over Time")
+        self.ax_line.legend()
 
         self.ax_hist.clear()
         self.ax_hist.hist(self.dynamic_view.image.flatten(), bins=50, color='gray')
@@ -305,33 +323,674 @@ class ManualCoincidenceGUI(QWidget):
         except ValueError:
             pass
 
-    def start_timer(self):
+    def start_coincidence_experiment(self, start_timestamp=0.0):
         self.timer.start(100)
+        self.coincidence.coin_stop_event.clear()
 
-    def pause_timer(self):
+        def gui_safe_callback(image, timestamp):
+            def safe_update():
+                self.update_dynamic_image(image, timestamp)
+
+            self.image_received.emit(image, timestamp)
+            self.timestamp = timestamp
+
+        def run():
+            self.coincidence.run_coincidence_experiment(callback=gui_safe_callback,
+                                                    stop_event=self.coincidence.coin_stop_event,
+                                                        start_timestamp=start_timestamp)
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def pause_coincidence_experiment(self):
+        self.coincidence.coin_stop_event.set()
         self.timer.stop()
+        print("[INFO] Execution of the coincidence experiment is paused.")
 
-    def resume_timer(self):
-        self.timer.start(100)
+    def resume_coincidence_experiment(self):
+        self.timer.start()
+        self.coincidence.coin_stop_event.clear()
+        start_timestamp = self.timestamp
+        self.start_coincidence_experiment(start_timestamp=start_timestamp)
+        print("[INFO] Execution of the coincidence experiment is resumed ...")
 
-    def stop_timer(self):
+    def show_experiment_finished_message(self):
+        box = QMessageBox()
+        box.setIcon(QMessageBox.Warning)
+        box.setWindowTitle('Success!')
+        box.setText('The coincidence experiment completed successfully and all data was written to the disk.\n\n'
+                    'Thank you for using this tool!\n\n'
+                    'Have a great day!')
+        box.setStandardButtons(QMessageBox.Ok)
+        choice = box.exec_()
+        if choice == QMessageBox.Ok:
+            return
+
+
+    def stop_coincidence_experiment(self):
         self.timer.stop()
+        self.coincidence.coin_stop_event.set()
         self.dynamic_img = np.zeros_like(self.dynamic_img)
         self.dynamic_view.update_image(self.dynamic_img)
-
+        roi = self.static_view.get_roi_rect()
+        roi_coordinates = int(roi.x()), int(roi.y()), int(roi.width()), int(roi.height())
+        self.coincidence.stop_coincidence_experiment(roi_coordinates, self.x_data, self.y_data)
 
 
     def capture_static_image(self):
-        # Simulate a new static image (replace with real acquisition if needed)
         self.static_img = np.random.randint(0, 255, (512, 512), dtype=np.uint8)
         self.update_static_image()
 
-if __name__ == '__main__':
-    app = QApplication(sys.argv)
-    win = QMainWindow()
-    widget = ImageViewer()
-    win.setCentralWidget(widget)
-    win.setWindowTitle('ROI on Static, Plot from Dynamic Image')
-    win.resize(1200, 800)
-    win.show()
-    sys.exit(app.exec_())
+
+class AutoCoincidenceGUI(QWidget):
+    def __init__(self, oa, coin):
+        super().__init__()
+        self.oa = oa
+        self.coincidence = coin
+        self.selector = None
+        self.ok_button = None
+        self.setWindowTitle("Setup of the TriCoincidence Routine")
+        self.lock = threading.Lock()
+
+        # === GIS / SPUTTER SECTION ===
+        gis_sputter_full_layout = QVBoxLayout()
+        gis_sputter_title = QLabel("GIS / Sputter Setup")
+        gis_sputter_title.setStyleSheet("font-weight: bold; font-size: 14px")
+        gis_sputter_description = QLabel("Please select all grids which should be used and set the correct "
+                                         "sputter and GIS times. The process step will be skipped if the "
+                                         "time is set to 0.0 s.\n"
+                                         "The default conditions are Xenon, 30kV, 0.15 nA.")
+        gis_sputter_description.setStyleSheet("color: gray; font-size: 11px")
+
+        gis_sputter_full_layout.addWidget(gis_sputter_title)
+        gis_sputter_full_layout.addWidget(gis_sputter_description)
+
+        gis_sputter_setup_layout = QHBoxLayout()
+        gis_sputter_setup_layout.setSpacing(10)
+
+        gis_sputter_input_boxes_layout = QVBoxLayout()
+        gis_sputter_input_boxes_layout.setAlignment(Qt.AlignLeft)
+        row_layout = QFormLayout()
+        row_layout.setContentsMargins(50, 0, 0, 0)  # Optional: tight layout
+        row_layout.setLabelAlignment(Qt.AlignLeft)
+        row_layout.setFormAlignment(Qt.AlignLeft)
+        self.setup_times = {}
+        labels = ["Sputter_Step1", "GIS_Step1", "Sputter_Step2"]
+        self.setup_times = {}
+        for label_text in labels:
+            line_edit = QLineEdit("0")
+            self.setup_times[label_text] = line_edit
+            row_layout.addRow(label_text + ":", line_edit)
+        form_widget = QWidget()
+        form_widget.setLayout(row_layout)
+        gis_sputter_input_boxes_layout.addWidget(form_widget)
+        gis_sputter_setup_layout.addLayout(gis_sputter_input_boxes_layout)
+
+        grid_checkbox_layout = QVBoxLayout()
+        self.load_from_file_checkbox = QCheckBox("Load Settings from File")
+        self.load_from_file_checkbox.stateChanged.connect(self.load_settings_file_if_checked)
+        grid_checkbox_layout.addWidget(self.load_from_file_checkbox)
+
+        self.unselect_all_checkbox = QCheckBox("Unselect All")
+        self.unselect_all_checkbox.stateChanged.connect(self.unselect_all_grids)
+        grid_checkbox_layout.addWidget(self.unselect_all_checkbox)
+
+        self.grid_checkboxes = {}
+        checkbox_grid = QGridLayout()
+        grids = self.oa.available_grids
+        columns = 4
+        for i, grid in enumerate(grids):
+            checkbox = QCheckBox(f"Grid {grid.id}")
+            checkbox.setChecked(True)
+            self.grid_checkboxes[grid.id] = checkbox
+            row = i // columns
+            col = i % columns
+            checkbox_grid.addWidget(checkbox, row, col)
+
+        grid_checkbox_layout.addLayout(checkbox_grid)
+        gis_sputter_setup_layout.addLayout(grid_checkbox_layout)
+
+        gis_sputter_full_layout.addLayout(gis_sputter_setup_layout)
+
+        gis_sputter_buttons = QHBoxLayout()
+        self.start_gis_button = QPushButton("Start")
+        self.start_gis_button.setFixedWidth(120)
+        self.start_gis_button.clicked.connect(self.start_gis_sputter)
+        gis_sputter_buttons.addWidget(self.start_gis_button)
+        self.abort_gis_button = QPushButton("Abort")
+        self.abort_gis_button.setFixedWidth(120)
+        self.abort_gis_button.clicked.connect(self.start_gis_sputter)
+        gis_sputter_buttons.addWidget(self.abort_gis_button)
+        gis_sputter_buttons.setAlignment(Qt.AlignLeft)
+        gis_sputter_buttons.setContentsMargins(50, 0, 0, 0)
+
+        gis_sputter_full_layout.addLayout(gis_sputter_buttons)
+
+
+        # === POSITION SETUP SECTION ===
+        position_setup_title = QLabel("Setup of the Positions")
+        position_setup_title.setStyleSheet("font-weight: bold; font-size: 14px")
+
+        position_setup_description = QLabel("Please switch to tri-coincidence mode (manual mode) on the tool."
+                                            "Please select all position of interest on all grids. Make sure to adjust"
+                                            "the optical focus and click 'Add'. \nPositions can be edited or deleted"
+                                            " by selection the respective row.")
+        position_setup_description.setStyleSheet("color: gray; font-size: 11px")
+
+
+        self.table = QTableWidget(0, 5)
+        self.table.setHorizontalHeaderLabels(["Grid", "Stage Position", "Objective Focus", "ROI", "Status"])
+
+        side_buttons = QVBoxLayout()
+        add_button = QPushButton("Add")
+        add_button.setFixedWidth(120)
+        add_button.clicked.connect(self.add_position)
+        side_buttons.addWidget(add_button)
+
+        edit_button = QPushButton("Edit")
+        edit_button.clicked.connect(self.edit_selected)
+        edit_button.setFixedWidth(120)
+        side_buttons.addWidget(edit_button)
+
+        delete_button = QPushButton("Delete")
+        delete_button.setFixedWidth(120)
+        delete_button.clicked.connect(self.delete_selected)
+        side_buttons.addWidget(delete_button)
+
+        import_button = QPushButton("Import")
+        import_button.setFixedWidth(120)
+        import_button.clicked.connect(self.import_from_file)
+        side_buttons.addWidget(import_button)
+
+        display_button = QPushButton("Display")
+        display_button.setFixedWidth(120)
+        display_button.clicked.connect(self.display_selected)
+        side_buttons.addWidget(display_button)
+
+        side_buttons.addStretch()
+
+        table_layout = QVBoxLayout()
+        table_layout.addWidget(self.table)
+
+        position_setup_layout = QHBoxLayout()
+        position_setup_layout.addLayout(table_layout, stretch=4)
+        position_setup_layout.addLayout(side_buttons, stretch=1)
+
+        # === DIVIDER ===
+        divider = QFrame()
+        divider.setFrameShape(QFrame.HLine)
+        divider.setFrameShadow(QFrame.Sunken)
+
+        # === PROCESS PROGRESS SECTION ===
+        progress_title = QLabel("Start the Automated Experiment")
+        progress_title.setStyleSheet("font-weight: bold; font-size: 14px")
+
+        progress_input_layout = QHBoxLayout()
+        progress_input_layout.setContentsMargins(0, 0, 0, 0)
+        progress_input_layout.setSpacing(0)
+
+        self.param_inputs = {}
+        param_definitions = [
+            ("Beam Current (nA)", "0.1"),
+            ("Z-Score", "2"),
+            ("Noise Cutoff", "2"),
+            ("Window Size", "20"),
+        ]
+
+        for label_text, default_value in param_definitions:
+            pair_layout = QHBoxLayout()
+            label = QLabel(label_text)
+            label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            input_field = QLineEdit(default_value)
+            input_field.setFixedWidth(80)
+            self.param_inputs[label_text] = input_field
+
+            pair_layout.addWidget(label)
+            pair_layout.addWidget(input_field)
+
+            container = QWidget()
+            container.setLayout(pair_layout)
+            progress_input_layout.addWidget(container)
+
+        progress_buttons = QHBoxLayout()
+        progress_buttons.setAlignment(Qt.AlignLeft)
+        progress_buttons.setContentsMargins(50, 0, 0, 0)
+        testexperiment_button = QPushButton("Test-Experiment")
+        testexperiment_button.clicked.connect(self.test_experiment)
+        progress_buttons.addWidget(testexperiment_button)
+        testexperiment_button.setFixedWidth(150)
+        start_progress_button = QPushButton("Start")
+        start_progress_button.clicked.connect(self.run_automated_experiment)
+        progress_buttons.addWidget(start_progress_button)
+        start_progress_button.setFixedWidth(120)
+        abort_progress_button = QPushButton("Abort")
+        abort_progress_button.clicked.connect(self.progress_abort_button_clicked)
+        abort_progress_button.setFixedWidth(120)
+        progress_buttons.addWidget(abort_progress_button)
+
+        progress_layout = QVBoxLayout()
+        progress_layout.addWidget(progress_title)
+        progress_layout.addLayout(progress_input_layout)
+        progress_layout.addLayout(progress_buttons)
+
+        # === FINAL LAYOUT ===
+        main_layout = QVBoxLayout()
+        main_layout.addLayout(gis_sputter_full_layout)
+        main_layout.addWidget(divider)
+        main_layout.addWidget(position_setup_title)
+        main_layout.addWidget(position_setup_description)
+        main_layout.addLayout(position_setup_layout)
+        main_layout.addWidget(divider)
+        main_layout.addLayout(progress_layout)
+        self.setLayout(main_layout)
+
+    def error_messagebox(self, text):
+        box = QMessageBox()
+        box.setIcon(QMessageBox.Warning)
+        box.setWindowTitle("Warning")
+        box.setText(text)
+        box.setStandardButtons(QMessageBox.Abort)
+        choice = box.exec_()
+        if choice == QMessageBox.Abort:
+            return
+
+    def show_experiment_finished_message(self):
+        QMessageBox.information(self, "Experiment Finished", "The experiment has completed successfully.")
+
+#######################################################################################################################
+#####       Functions controlling the manual setup of the sample position
+#######################################################################################################################P
+
+    def add_position(self):
+        row = self.table.rowCount()
+        self.tricoincidence.grab_fl_live_image()
+        fl_roi = self.define_roi()
+        grid_number, stage_position, fl_settings = self.tricoincidence.run_add_position(row, fl_roi)
+        self.table.insertRow(row)
+        self.table.setItem(row, 0, QTableWidgetItem(str(grid_number)))
+        self.table.setItem(row, 1, QTableWidgetItem(f"x: {np.round(stage_position.x*1e6, 1)}, "
+                                                    f"y: {np.round(stage_position.y*1e6, 1)}, "
+                                                    f"z: {np.round(stage_position.z*1e6, 1)}"))
+        self.table.setItem(row, 2, QTableWidgetItem(str(fl_settings['objective_focus']*1000)))
+        self.table.setItem(row, 3, QTableWidgetItem(str(fl_settings['roi'])))
+        self.table.resizeColumnsToContents()
+
+    def delete_selected(self):
+        selected = self.table.selectionModel().selectedRows()
+        for index in sorted(selected, key=lambda x: x.row(), reverse=True):
+            row = index.row()
+            self.table.removeRow(row)
+            self.tricoincidence.run_delete_position(row)
+
+    def edit_selected(self):
+        selected = self.table.selectionModel().selectedRows()
+        if selected:
+            row = selected[0].row()
+            fl_roi = self.define_roi()
+            grid_number, stage_position, fl_settings = self.tricoincidence.run_edit_position(row, fl_roi)
+            self.table.setItem(row, 0, QTableWidgetItem(str(grid_number)))
+            self.table.setItem(row, 1, QTableWidgetItem(f"x: {np.round(stage_position.x * 1e6, 1)}, "
+                                                        f"y: {np.round(stage_position.y * 1e6, 1)}, "
+                                                        f"z: {np.round(stage_position.z * 1e6, 1)}"))
+            self.table.setItem(row, 2, QTableWidgetItem(str(fl_settings['objective_focus']*1000)))
+            self.table.setItem(row, 3, QTableWidgetItem(str(fl_settings['roi'])))
+            self.table.resizeColumnsToContents()
+
+    def import_from_file(self):
+        try:
+            with open(self.data_file, 'r') as f:
+                self.position_data = json.load(f)
+                i = 0
+            for data in self.position_data:
+                row = i
+                stage_pos = data["stage_position"]
+                self.table.insertRow(row)
+                self.table.setItem(row, 0, QTableWidgetItem(str(data["grid"])))
+                self.table.setItem(row, 1, QTableWidgetItem(f"x:{np.round(stage_pos['x'] * 1e6, 1)}, "
+                                                            f"y:{np.round(stage_pos['y'] * 1e6, 1)}, "
+                                                            f"z:{np.round(stage_pos['z'] * 1e6, 1)}"))
+                self.table.setItem(row, 2, QTableWidgetItem(str(str(data["objective_focus"]*1000))))
+                self.table.setItem(row, 3, QTableWidgetItem(str(data["roi"])))
+                i = i+1
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            print(f"Error loading position data: {e}")
+
+    def display_selected(self):
+        selected = self.table.selectionModel().selectedRows()
+        if selected:
+            row = selected[0].row()
+            self.tricoincidence.run_display_position(row)
+
+#######################################################################################################################
+#####       Functions controlling the GIS/Sputter setup
+#######################################################################################################################
+
+    def unselect_all_grids(self):
+        if self.unselect_all_checkbox.isChecked():
+            for cb in self.grid_checkboxes.values():
+                cb.setChecked(False)
+            self.unselect_all_checkbox.setChecked(False)
+
+    def load_settings_file_if_checked(self, state):
+        if state == Qt.Checked:
+            file_path, _ = QFileDialog.getOpenFileName(
+                self, "Select Grid List File", "", "YAML Files (*.yaml);;All Files (*)")
+            self.settings_file_path = None
+            if file_path:
+                with open(file_path, 'r') as f:
+                    self.settings_file_path = file_path
+            else:
+                self.load_from_file_checkbox.setChecked(False)
+                self.settings_file_path = None
+        elif state == Qt.Unchecked:
+            self.settings_file_path = None
+
+    def readin_input_values(self):
+        try:
+            sputter1_time = float(self.setup_times["Sputter_Step1"].text())
+            gis_time = float(self.setup_times["GIS_Step1"].text())
+            sputter2_time = float(self.setup_times["Sputter_Step2"].text())
+        except ValueError:
+            QMessageBox.warning(self, "Invalid Input", "Please enter numeric times.")
+            return
+
+        grid_number = [grid_id for grid_id, checkbox in self.grid_checkboxes.items()
+                             if checkbox.isChecked()]
+
+        setup_params = {
+            "selected_grids": grid_number,
+            "sputter1": sputter1_time,
+            "gis": gis_time,
+            "sputter2": sputter2_time,
+            "settings_file_path": getattr(self, "settings_file_path", None)}
+
+        return setup_params
+
+    def start_gis_sputter(self):
+        setup_params = self.readin_input_values()
+        self.tricoincidence.run_auto_gis_sputter(setup_params)
+
+#######################################################################################################################
+#####       Functions which control the automatic tricoincidence experiment
+#######################################################################################################################
+
+    def get_input_parameters_tri_setup(self):
+        params = {}
+        for key, line_edit in self.param_inputs.items():
+            try:
+                value = float(line_edit.text())
+            except ValueError:
+                value = None  # or raise an error if preferred
+            params[key] = value
+        return params
+
+    # def run_test_experiment(self):
+    #     print('Test')
+    #     self.tri_parameters = self.get_input_parameters_tri_setup()
+    #     selected = self.table.selectionModel().selectedRows()
+    #     if selected:
+    #         row = selected[0].row()
+    #         self.tricoincidence.run_tricoincidence_experiment(row=row, beam_current=self.tri_parameters["Beam Current (nA)"],
+    #                                                         callback=self.update_plot,
+    #                                                         stop_event=self.tricoincidence.tri_stop_event,
+    #                                                         test=True)
+
+
+    def run_automated_experiment(self):
+        self.tri_parameters = self.get_input_parameters_tri_setup()
+        self.tricoincidence.run_tricoincidence_experiment(beam_current=self.tri_parameters["Beam Current (nA)"],
+                                                          callback=self.fit_z_score,
+                                                          stop_event=self.tricoincidence.tri_stop_event,
+                                                          test=False)
+
+
+#### I AM HERE WITH MY DEBUGGING EFFORTS NOT WORKING YET!! ALSO I NEED TO CLEANUP THE PLOTTING FUNCTIONS TO MAKE SURE
+    # I UNDERSTAND WHAT I DO
+    def fit_z_score(self, timestamp, intensity):
+        global drop_counter
+        self.x_data.append(timestamp)
+        self.y_data.append(intensity)
+        values = []
+        rolling_window = []
+        rolling_means = []
+        rolling_stds = []
+        z_scores = []
+        for i, value in enumerate(self.y_data):
+            with self.lock:
+                values.append(value)
+                rolling_window.append(value)
+
+                if len(rolling_window) >= self.tri_parameters["Window Size"]:
+                    mean = statistics.mean(rolling_window)
+                    std = statistics.stdev(rolling_window)
+                    z = (value - mean) / std if std != 0 else 0
+
+                    rolling_means.append(mean)
+                    rolling_stds.append(std)
+                    z_scores.append(z)
+
+                    if z < self.tri_parameters["Z-Score"]:
+                        drop_counter += 1
+                    else:
+                        drop_counter = 0
+
+                    if drop_counter >= self.tri_parameters["Noise Cutoff"]:
+                        self.tricoincidence.tri_stop_event.set()
+                        return
+                else:
+                    rolling_means.append(None)
+                    rolling_stds.append(None)
+                    z_scores.append(None)
+            time.sleep(0.1)
+        self.tricoincidence.tri_stop_event.set()
+
+    def progress_abort_button_clicked(self):
+       print("Abort button clicked.")
+
+#######################################################################################################################
+#####       Functions which open separate plotting windows
+#######################################################################################################################
+
+    def define_roi(self):
+        """
+        Define a ROI in the fluorescence image which will be used to calculate the average.
+        This script will take the currently displayed image in the 3 view of XT as reference.
+        """
+        roi_coords = [None]  # Use a mutable object to capture updates
+
+        def onselect(eclick, erelease):
+            x1, y1 = int(eclick.xdata), int(eclick.ydata)
+            x2, y2 = int(erelease.xdata), int(erelease.ydata)
+            xmin, xmax = sorted([x1, x2])
+            ymin, ymax = sorted([y1, y2])
+            roi_coords[0] = (xmin, xmax, ymin, ymax)
+
+        def on_ok_clicked(event):
+            if roi_coords[0] is not None:
+                print(
+                    f"Final ROI confirmed: x={roi_coords[0][2]}:{roi_coords[0][3]}, y={roi_coords[0][0]}:{roi_coords[0][1]}")
+                plt.close(fig)
+                if self.event_loop:
+                    self.event_loop.quit()
+            else:
+                print("No ROI selected yet.")
+
+        image = tifffile.imread(os.path.join(self.oa.temp_folder_path, f"fl_image.tif"))
+        fig, ax = plt.subplots()
+        plt.subplots_adjust(bottom=0.2)
+        ax.imshow(image.data, cmap='gray')
+        ax.set_title("Draw ROI, then click OK to confirm")
+
+
+        self.selector = RectangleSelector(
+            ax, onselect,
+            useblit=True,
+            button=[1],
+            minspanx=5, minspany=5,
+            spancoords='pixels',
+            interactive=True)
+
+        ok_ax = plt.axes([0.4, 0.05, 0.2, 0.075])
+        self.ok_button = Button(ok_ax, 'OK')
+        self.ok_button.on_clicked(on_ok_clicked)
+        plt.show(block=False)
+        self.event_loop = QEventLoop()
+        self.event_loop.exec_()
+
+        file_path = os.path.join(self.oa.temp_folder_path, f"fl_image.tif")
+
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            print(f"Deleted: {file_path}")
+        else:
+            print("File does not exist.")
+
+        if roi_coords:
+            #plt.imshow(image[roi_coords[0][2]:roi_coords[0][3], roi_coords[0][0]:roi_coords[0][1]])
+            #plt.show()
+            return (roi_coords[0][2],roi_coords[0][3], roi_coords[0][0],roi_coords[0][1])
+        else:
+            print("No ROI was selected.")
+            return None
+
+    def test_experiment(self):
+        selected = self.table.selectionModel().selectedRows()
+        if not selected:
+            self.error_messagebox("Please select a sample position to run the test experiment.")
+            return
+
+        row = selected[0].row()
+        dialog = TestExperimentDialog(self.tricoincidence, row, self.oa, self)
+        dialog.exec_()
+        self.update_status(row=row, status="TEST")
+
+
+    def update_status(self, row: int, status: str):
+        item = QTableWidgetItem()
+        item.setTextAlignment(Qt.AlignCenter)
+
+        if status == "OK":
+            item.setText("✓")
+            item.setForeground(QBrush(QColor("green")))
+        elif status == "FAIL":
+            item.setText("✗")
+            item.setForeground(QBrush(QColor("red")))
+        elif status == "TEST":
+            item.setText("Test")
+            item.setForeground(QBrush(QColor("blue")))
+        else:
+            item.setText("?")
+            item.setForeground(QBrush(QColor("gray")))
+
+        self.table.setItem(row, 4, item)
+
+class TestExperimentDialog(QDialog):
+    def __init__(self, tricoincidence, row, oa, coin, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Output Test Experiment")
+        self.setMinimumSize(800, 400)
+        self.tricoincidence = tricoincidence
+        self.oa = oa
+        self.main_gui = AutoCoincidenceGUI(self.oa, self.coin)
+        self.row = row
+        self.running = True
+
+
+        self.x_data = []
+        self.y_data = []
+
+        self.fig, self.ax = plt.subplots()
+        self.line, = self.ax.plot([], [], 'b-')
+        self.ax.set_xlabel("Time (s)")
+        self.ax.set_ylabel("Intensity")
+        self.canvas = FigureCanvas(self.fig)
+
+        self.stop_button = QPushButton("STOP")
+        self.stop_button.setFixedWidth(300)
+        self.stop_button.clicked.connect(self.stop_test_experiment)
+
+        self.show_plot_button = QPushButton("Show Results")
+        self.show_plot_button.setFixedWidth(300)
+        self.show_plot_button.clicked.connect(self.show_results_plot)
+
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+        button_layout.addWidget(self.stop_button, alignment=Qt.AlignCenter)
+        button_layout.addWidget(self.show_plot_button, alignment=Qt.AlignCenter)
+        button_layout.addStretch()
+
+        layout = QVBoxLayout()
+        layout.addWidget(self.canvas)
+        layout.addLayout(button_layout)
+        self.setLayout(layout)
+
+        # Start experiment
+        self.tricoincidence.tri_stop_event.clear()
+        self.thread = threading.Thread(target=self.run_test_experiment)
+        self.thread.start()
+
+        # Auto-stop after 30 minutes
+        self.timer_thread = threading.Thread(target=self.auto_stop_after_delay, args=(1800,))
+        self.timer_thread.start()
+
+    def update_plot(self, timestamp, intensity):
+        if not self.running:
+            return
+        self.x_data.append(timestamp)
+        self.y_data.append(intensity)
+        self.line.set_data(self.x_data, self.y_data)
+        self.ax.relim()
+        self.ax.autoscale_view()
+        self.canvas.draw()
+
+    def run_test_experiment(self):
+        settings = self.main_gui.get_input_parameters_tri_setup()
+        self.tricoincidence.run_tricoincidence_experiment(
+            beam_current=settings["Beam Current (nA)"],
+            row=self.row,
+            callback=self.update_plot,
+            stop_event=self.tricoincidence.tri_stop_event,
+            test=True
+        )
+
+    def auto_stop_after_delay(self, delay_seconds):
+        time.sleep(delay_seconds)
+        if self.running:
+            print("[WARNING] Maximal experiment time exceeded (30 minutes).")
+            self.stop_test_experiment()
+
+    def stop_test_experiment(self):
+        print("Stop button pressed or timeout.")
+        self.running = False
+        self.tricoincidence.tri_stop_event.set()
+        self.close()
+        self.show_results_plot()
+
+    def closeEvent(self, event):
+        self.running = False
+        self.tricoincidence.tri_stop_event.set()
+        event.accept()
+
+    def show_results_plot(self):
+        if self.tricoincidence.tri_stop_event.is_set():
+            plt.figure(figsize=(10, 5))
+            x = list(range(len(self.tricoincidence.data[:, 1])))
+            plt.plot(x, self.tricoincidence.data[:, 1], label='Signal', color='blue')
+            plt.plot(x, self.tricoincidence.rolling_means, label='Rolling Mean', color='orange', linestyle='--')
+
+            colors = plt.cm.tab20(np.linspace(0, 1, len(self.tricoincidence.results)))
+            for i, ((z, d), trig) in enumerate(self.tricoincidence.results.items()):
+                if isinstance(trig, int):
+                    label = f"Z={z}, D={d} → {trig}"
+                    plt.axvline(x=trig, color=colors[i], linestyle=':', label=label)
+
+            plt.title("Z-score Drop Detection Simulation")
+            plt.xlabel("Z-slice")
+            plt.ylabel("Mean Intensity")
+            plt.legend(fontsize='small', loc='best')
+            plt.grid(True)
+            plt.tight_layout()
+            plt.show()
+
+

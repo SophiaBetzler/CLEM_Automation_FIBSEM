@@ -1,24 +1,23 @@
 from Basic_Functions import BasicFunctions, OverArch
 # from Fluorescence import Fluorescence
-from Imaging import Imaging
-from GIS_Sputter_Setup import GisSputterAutomation
+#from Imaging import Imaging
+from GIS_Sputter_Setup import GisSputterAutomationGUI
 # from Fiducial_Identification import FiducialID
-# from Automatic_CLEM import *
-from TriCoincidence import AutomatedTriCoincidence
+#from Automatic_CLEM import *
+from CoincidenceGUI import CoincidenceGUI
+from CoincidenceFunctions import CoincidenceFunctions
 # from Milling import MillingSetup
 # import numpy as np
 # from EucentricHeight import EucentricHeight
 
 
 oa = OverArch()
-#gis = GisSputterAutomation(oa)
-AutomatedTriCoincidence(oa)
+CoincidenceGUI(oa=oa, mode='manual')
+#GisSputterAutomationGUI(oa)
+
+#AutomatedTriCoincidenceGUI(oa)
 
 
-# bf = BasicFunctions(manufacturer='Thermo',
-#                 ip='192.168.0.1',
-#                 tool='Helios 5 Hydra UX',
-#                 pc_type='windows')
 
 ### I removed the path, important for the CLEM pipeline
 
@@ -29,7 +28,7 @@ AutomatedTriCoincidence(oa)
 # Should this be done?
 # The function to do this is self.oa.set_variable("name", value)
 
-#gis = GisSputterAutomation()
+#gis = GisSputterAutomationGUI(oa)
 
 
 

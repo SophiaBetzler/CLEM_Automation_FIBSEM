@@ -17,13 +17,18 @@ elif pc_type == 'Darwin':
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.widgets import RectangleSelector, Button
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+
 #from autoscript_sdb_microscope_client import SdbMicroscopeClient
 import sys
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QFrame, QMessageBox, QFormLayout, QLineEdit,
-    QTableWidget, QTableWidgetItem, QPushButton, QLabel, QSpinBox, QCheckBox, QGridLayout, QFileDialog
+    QTableWidget, QTableWidgetItem, QPushButton, QLabel, QSpinBox, QCheckBox, QGridLayout, QFileDialog,
+    QDialog
 )
 from PyQt5.QtCore import Qt, QEventLoop, QObject, pyqtSignal, QThread, QTimer, QMetaObject
+from PyQt5.QtGui import QBrush, QColor, QIcon
+from PyQt5.QtCore import Qt
 from collections import namedtuple
 import json
 import matplotlib.image as mpimg
@@ -36,23 +41,12 @@ from datetime import datetime
 import statistics
 from collections import deque
 
-class AutomatedTriCoincidenceGUI:
-    """
-    Sole purpose of this class is to open the GUI controlling the process.
-    """
-    def __init__(self, oa):
-        self.oa = OverArch()
-        self.app = QApplication(sys.argv)
-        self.window = GUIforTriCoincidence(self.oa)
-        self.run()
 
-    def run(self):
-        self.window.show()
-        self.app.exec()
 
 
 class TriCoincidence:
     def __init__(self, oa):
+        self.results = None
         self.oa = oa
         if self.oa.tool != 'Arctis':
             raise RuntimeError("This is not the right tool to run the automated tricoincidence routine.")
@@ -159,25 +153,28 @@ class TriCoincidence:
             writer_thread.start()
             i=0
             sim = self.fl_data_simulation()
-            while not stop_event.is_set():
-                now = datetime.now()
-                timestamp = (now - start_time).total_seconds()
-                image = sim()
-                self.image_queue.put((image.copy(), i))
-                av_intensity = np.nanmean(image[fl_settings['roi'][0]:fl_settings['roi'][1],
-                                                  fl_settings['roi'][2]: fl_settings['roi'][3]])
-                print(av_intensity)
-                self.x_data.append(timestamp)
-                self.y_data.append(av_intensity)
-                if update_callback:
-                    update_callback(timestamp, av_intensity)
-                i += 1
-            self.image_queue.put(None)
-            writer_thread.join()
-            data = np.vstack([self.x_data, self.y_data]).T
-            np.save(os.path.join(self.oa.folder_path, f"{row}-Dataset", "Intensity_Data.npy"),
-                    data)
-            print("Imaging done.")
+            try:
+                while not stop_event.is_set():
+                    now = datetime.now()
+                    timestamp = (now - start_time).total_seconds()
+                    image = sim()
+                    self.image_queue.put((image.copy(), i))
+                    av_intensity = np.nanmean(image[fl_settings['roi'][0]:fl_settings['roi'][1],
+                                                      fl_settings['roi'][2]: fl_settings['roi'][3]])
+                    self.x_data.append(timestamp)
+                    self.y_data.append(av_intensity)
+                    if update_callback:
+                        update_callback(timestamp, av_intensity)
+                    i += 1
+            except Exception as e:
+                print(f"[ERROR] Exception occurred: {e}")
+            finally:
+                self.image_queue.put(None)
+                writer_thread.join()
+                self.data = np.vstack([self.x_data, self.y_data]).T
+                np.save(os.path.join(self.oa.folder_path, f"{row}-Dataset", "Intensity_Data.npy"),
+                        self.data)
+
 
     def run_move_to_stored_location(self, row):
         if self.oa.manufacturer != 'Demo':
@@ -209,11 +206,18 @@ class TriCoincidence:
         return shift[0]*pixelsize, shift[1]*pixelsize
 
     def milling_tricoincidence(self, beam_current, stop_event):
-        while not stop_event.is_set():
-            time.sleep(0.5)
-            print('Milling running ...')
-        print('Milling done.')
+        print("[THREAD] Milling started")
+        try:
+            print("[DEBUG] Milling thread sees stop_event is set:", stop_event.is_set())
 
+            while not stop_event.is_set():
+                time.sleep(0.5)
+                print('Milling running ...')
+            print('Milling finished')
+        except Exception as e:
+            print(f"[THREAD] Milling crashed: {e}")
+        finally:
+            print("[THREAD] Milling finished")
 
 
 #######################################################################################################################
@@ -334,7 +338,11 @@ class TriCoincidence:
                                                            args=(i, fl_settings, callback, stop_event))
                     self.milling_thread.start()
                     self.imaging_thread.start()
-                    print('I am here.')
+
+                    self.milling_thread.join(timeout=10)
+                    self.imaging_thread.join(timeout=10)
+
+                    print('Test if I make it to here.')
 
         else:
             fl_settings = self.position_data[row]['fl_settings']
@@ -349,18 +357,24 @@ class TriCoincidence:
                                                        args=(row, fl_settings, callback, stop_event))
                 self.milling_thread.start()
                 self.imaging_thread.start()
-                print('I think I am here.')
 
-                self.milling_thread.join()
-                self.imaging_thread.join()
+                print("Joining milling thread")
+                self.milling_thread.join(timeout=60)
+                print("Milling thread finished")
 
+                print("Joining imaging thread")
+                self.imaging_thread.join(timeout=60)
+                print("Imaging thread finished")
+
+                print('Test if I make it to here.')
+                #self.parameter_test_function_id_drop(row)
 
                 if self.milling_thread.is_alive():
                     print("Milling thread did not finish in time.")
                 if self.imaging_thread.is_alive():
                     print("Imaging thread did not finish in time.")
 
-                self.parameter_test_function_id_drop(row)
+
 
 
     def id_intensity_drop(self, timestamp, intensity):
@@ -368,24 +382,25 @@ class TriCoincidence:
         time.sleep(10)
         self.tri_stop_event.set()
 
-    def parameter_test_function_id_drop(self, row, thresholds=[-1.5, -2.0, -2.5, -3.0, -3.5],
+    def parameter_test_function_id_drop(self, thresholds=[-1.5, -2.0, -2.5, -3.0, -3.5],
                                         debounce_values=[1, 2, 3, 4], window_size=10):
+        print("Started the parameter function.")
         results = {}
         z_scores = []
-        rolling_means = []
-
+        self.rolling_means = []
         rolling_window = deque(maxlen=window_size)
         for val in self.y_data:
             rolling_window.append(val)
             if len(rolling_window) < window_size:
-                rolling_means.append(None)
+                self.rolling_means.append(None)
                 z_scores.append(None)
                 continue
             mean = statistics.mean(rolling_window)
             std = statistics.stdev(rolling_window)
             z = (val - mean) / std if std != 0 else 0
-            rolling_means.append(mean)
+            self.rolling_means.append(mean)
             z_scores.append(z)
+
 
         for z_thresh in thresholds:
             for debounce in debounce_values:
@@ -408,26 +423,7 @@ class TriCoincidence:
         for (z, d), trig in sorted(results.items()):
             print(f"{z:>7} | {d:>5} | {trig!s:>20}")
         x = list(range(len(self.y_data)))
-        fig, ax = plt.subplots(figsize=(10, 5))
-        ax.plot(x, self.y_data, label='Signal', color='blue')
-        ax.plot(x, rolling_means, label='Rolling Mean', color='orange', linestyle='--')
-
-        colors = plt.cm.tab20(np.linspace(0, 1, len(results)))
-        for i, ((z, d), trig) in enumerate(results.items()):
-            if isinstance(trig, int):
-                label = f"Z={z}, D={d} → {trig}"
-                ax.axvline(x=trig, color=colors[i], linestyle=':', label=label)
-
-        ax.set_xlabel("Z-slice")
-        ax.set_ylabel("Mean Intensity")
-        ax.legend(fontsize='small', loc='best')
-        ax.grid(True)
-        fig.tight_layout()
-
-        save_path = os.path.join(self.oa.folder_path, f"{row}-Dataset", "Parameter_Screening.png")
-        fig.savefig(save_path, dpi=300)
-        plt.close(fig)
-
+        return self.y_data, rolling_means, results
 
     def image_writer(self, row):
         while True:
@@ -665,7 +661,7 @@ class GUIforTriCoincidence(QWidget):
         progress_buttons.addWidget(testexperiment_button)
         testexperiment_button.setFixedWidth(150)
         start_progress_button = QPushButton("Start")
-        start_progress_button.clicked.connect(self.progress_start_button_clicked)
+        start_progress_button.clicked.connect(self.run_automated_experiment)
         progress_buttons.addWidget(start_progress_button)
         start_progress_button.setFixedWidth(120)
         abort_progress_button = QPushButton("Abort")
@@ -826,20 +822,21 @@ class GUIforTriCoincidence(QWidget):
             except ValueError:
                 value = None  # or raise an error if preferred
             params[key] = value
-        print(params)
         return params
 
-    def run_test_experiment(self):
-        self.tri_parameters = self.get_input_parameters_tri_setup()
-        selected = self.table.selectionModel().selectedRows()
-        if selected:
-            row = selected[0].row()
-            self.tricoincidence.run_tricoincidence_experiment(row=row, beam_current=self.tri_parameters["Beam Current (nA)"],
-                                                            callback=self.update_plot,
-                                                            stop_event=self.tricoincidence.tri_stop_event,
-                                                            test=True)
+    # def run_test_experiment(self):
+    #     print('Test')
+    #     self.tri_parameters = self.get_input_parameters_tri_setup()
+    #     selected = self.table.selectionModel().selectedRows()
+    #     if selected:
+    #         row = selected[0].row()
+    #         self.tricoincidence.run_tricoincidence_experiment(row=row, beam_current=self.tri_parameters["Beam Current (nA)"],
+    #                                                         callback=self.update_plot,
+    #                                                         stop_event=self.tricoincidence.tri_stop_event,
+    #                                                         test=True)
 
-    def progress_start_button_clicked(self):
+
+    def run_automated_experiment(self):
         self.tri_parameters = self.get_input_parameters_tri_setup()
         self.tricoincidence.run_tricoincidence_experiment(beam_current=self.tri_parameters["Beam Current (nA)"],
                                                           callback=self.fit_z_score,
@@ -848,7 +845,7 @@ class GUIforTriCoincidence(QWidget):
 
 
 #### I AM HERE WITH MY DEBUGGING EFFORTS NOT WORKING YET!! ALSO I NEED TO CLEANUP THE PLOTTING FUNCTIONS TO MAKE SURE
-    # I UNDERSTAND WHAT I DO 
+    # I UNDERSTAND WHAT I DO
     def fit_z_score(self, timestamp, intensity):
         global drop_counter
         self.x_data.append(timestamp)
@@ -963,25 +960,41 @@ class GUIforTriCoincidence(QWidget):
             return
 
         row = selected[0].row()
-        dialog = TestExperimentDialog(self.tricoincidence, row, self)
+        dialog = TestExperimentDialog(self.tricoincidence, row, self.oa, self)
         dialog.exec_()
+        self.update_status(row=row, status="TEST")
 
 
-import time
-import threading
-from PyQt5.QtWidgets import QDialog, QVBoxLayout, QPushButton
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-import matplotlib.pyplot as plt
+    def update_status(self, row: int, status: str):
+        item = QTableWidgetItem()
+        item.setTextAlignment(Qt.AlignCenter)
 
+        if status == "OK":
+            item.setText("✓")
+            item.setForeground(QBrush(QColor("green")))
+        elif status == "FAIL":
+            item.setText("✗")
+            item.setForeground(QBrush(QColor("red")))
+        elif status == "TEST":
+            item.setText("Test")
+            item.setForeground(QBrush(QColor("blue")))
+        else:
+            item.setText("?")
+            item.setForeground(QBrush(QColor("gray")))
+
+        self.table.setItem(row, 4, item)
 
 class TestExperimentDialog(QDialog):
-    def __init__(self, tricoincidence, row, parent=None):
+    def __init__(self, tricoincidence, row, oa, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Output Test Experiment")
         self.setMinimumSize(800, 400)
         self.tricoincidence = tricoincidence
+        self.oa = oa
+        self.main_gui = GUIforTriCoincidence(self.oa)
         self.row = row
         self.running = True
+
 
         self.x_data = []
         self.y_data = []
@@ -996,14 +1009,19 @@ class TestExperimentDialog(QDialog):
         self.stop_button.setFixedWidth(300)
         self.stop_button.clicked.connect(self.stop_test_experiment)
 
+        self.show_plot_button = QPushButton("Show Results")
+        self.show_plot_button.setFixedWidth(300)
+        self.show_plot_button.clicked.connect(self.show_results_plot)
+
         button_layout = QHBoxLayout()
         button_layout.addStretch()
         button_layout.addWidget(self.stop_button, alignment=Qt.AlignCenter)
+        button_layout.addWidget(self.show_plot_button, alignment=Qt.AlignCenter)
         button_layout.addStretch()
 
         layout = QVBoxLayout()
         layout.addWidget(self.canvas)
-        layout.addWidget(self.stop_button)
+        layout.addLayout(button_layout)
         self.setLayout(layout)
 
         # Start experiment
@@ -1026,8 +1044,9 @@ class TestExperimentDialog(QDialog):
         self.canvas.draw()
 
     def run_test_experiment(self):
+        settings = self.main_gui.get_input_parameters_tri_setup()
         self.tricoincidence.run_tricoincidence_experiment(
-            beam_current=0.2,
+            beam_current=settings["Beam Current (nA)"],
             row=self.row,
             callback=self.update_plot,
             stop_event=self.tricoincidence.tri_stop_event,
@@ -1045,10 +1064,33 @@ class TestExperimentDialog(QDialog):
         self.running = False
         self.tricoincidence.tri_stop_event.set()
         self.close()
+        self.show_results_plot()
 
     def closeEvent(self, event):
         self.running = False
         self.tricoincidence.tri_stop_event.set()
         event.accept()
+
+    def show_results_plot(self):
+        if self.tricoincidence.tri_stop_event.is_set():
+            plt.figure(figsize=(10, 5))
+            x = list(range(len(self.tricoincidence.data[:, 1])))
+            plt.plot(x, self.tricoincidence.data[:, 1], label='Signal', color='blue')
+            plt.plot(x, self.tricoincidence.rolling_means, label='Rolling Mean', color='orange', linestyle='--')
+
+            colors = plt.cm.tab20(np.linspace(0, 1, len(self.tricoincidence.results)))
+            for i, ((z, d), trig) in enumerate(self.tricoincidence.results.items()):
+                if isinstance(trig, int):
+                    label = f"Z={z}, D={d} → {trig}"
+                    plt.axvline(x=trig, color=colors[i], linestyle=':', label=label)
+
+            plt.title("Z-score Drop Detection Simulation")
+            plt.xlabel("Z-slice")
+            plt.ylabel("Mean Intensity")
+            plt.legend(fontsize='small', loc='best')
+            plt.grid(True)
+            plt.tight_layout()
+            plt.show()
+
 
 

@@ -493,6 +493,8 @@ class CoincidenceFunctions:
                    header="timestamp, average_intensity", comments='')
         np.save(os.path.join(path, "roi_intensities.npy"), intensity_data)
         print("[INFO] Coincidence experiment terminated successfully.")
+
+        print("I still have to optimize the final acquisition of the FIB image and the acquisition of the FIB image before starting the experiment")
         self.imaging.acquire_image(hfw=self.hfw, beam_type='ion', autofocus=True, filename=f"FIB-after-image")
         if self.on_experiment_stopped:
             self.on_experiment_stopped()

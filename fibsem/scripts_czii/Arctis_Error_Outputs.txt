@@ -1,29 +1,29 @@
-def start_coincidence_milling(oa, beam_current, command_queue, resume=False):
-    if oa.manufacturer != 'Demo':
-        oa.thermo_microscope.imaging.set_active_view(2)
-        oa.thermo_microscope.beams.ion_beam.beam_current.value = beam_current
-        milling_active = False
-        oa.thermo_microscope.patterning.start()
-        print('Milling starting ...')
-        while True:
-            try:
-                cmd = command_queue.get_nowait()
-                if cmd == 'Pause':
-                    if milling_active:
-                        oa.thermo_microscope.patterning.pause()
-                        print('[MILLING] Paused')
-                        milling_active = False
-                elif cmd == 'Stop':
-                    if milling_active:
-                        oa.thermo_microscope.patterning.stop()
-                        print('[MILLING] Stopped')
-                        milling_active = False
-                    break  # Exit loop and end process
-                elif cmd == 'Resume':
-                    if not milling_active:
-                        oa.thermo_microscope.patterning.resume()
-                        print('[MILLING] Resumed')
-                        milling_active = True
-            except queue.Empty:
-                pass
-            time.sleep(0.1)
+Exception in thread Thread-3:
+Traceback (most recent call last):
+  File "C:\Program Files\Enthought\Python\envs\AutoScript\lib\threading.py", line 932, in _bootstrap_inner
+    self.run()
+  File "C:\Program Files\Enthought\Python\envs\AutoScript\lib\threading.py", line 870, in run
+    self._target(*self._args, **self._kwargs)
+  File "C:\Users\User\Documents\github\openfibsem\Coincidence\fibsem\modules_czii\CoincidenceGUI.py", line 342, in run
+    self.coincidence.run_coincidence_experiment(callback=gui_safe_callback,
+  File "C:\Users\User\Documents\github\openfibsem\Coincidence\fibsem\modules_czii\CoincidenceFunctions.py", line 517, in run_coincidence_experiment
+    self.milling_process.start()
+  File "C:\Program Files\Enthought\Python\envs\AutoScript\lib\multiprocessing\process.py", line 121, in start
+    self._popen = self._Popen(self)
+  File "C:\Program Files\Enthought\Python\envs\AutoScript\lib\multiprocessing\context.py", line 224, in _Popen
+    return _default_context.get_context().Process._Popen(process_obj)
+  File "C:\Program Files\Enthought\Python\envs\AutoScript\lib\multiprocessing\context.py", line 327, in _Popen
+    return Popen(process_obj)
+  File "C:\Program Files\Enthought\Python\envs\AutoScript\lib\multiprocessing\popen_spawn_win32.py", line 93, in __init__
+    reduction.dump(process_obj, to_child)
+  File "C:\Program Files\Enthought\Python\envs\AutoScript\lib\multiprocessing\reduction.py", line 60, in dump
+    ForkingPickler(file, protocol).dump(obj)
+TypeError: cannot pickle '_thread.lock' object
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+  File "C:\Program Files\Enthought\Python\envs\AutoScript\lib\multiprocessing\spawn.py", line 107, in spawn_main
+    new_handle = reduction.duplicate(pipe_handle,
+  File "C:\Program Files\Enthought\Python\envs\AutoScript\lib\multiprocessing\reduction.py", line 79, in duplicate
+    return _winapi.DuplicateHandle(
+OSError: [WinError 6] The handle is invalid
+

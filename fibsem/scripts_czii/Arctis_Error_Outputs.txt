@@ -1,57 +1,14 @@
-Exception in thread Thread-3:
-Traceback (most recent call last):
-  File "C:\Program Files\Enthought\Python\envs\AutoScript\lib\threading.py", line 932, in _bootstrap_inner
-    self.run()
-  File "C:\Program Files\Enthought\Python\envs\AutoScript\lib\threading.py", line 870, in run
-    self._target(*self._args, **self._kwargs)
-  File "C:\Users\User\Documents\github\openfibsem\Coincidence\fibsem\modules_czii\CoincidenceGUI.py", line 342, in run
-    self.coincidence.run_coincidence_experiment(callback=gui_safe_callback,
-  File "C:\Users\User\Documents\github\openfibsem\Coincidence\fibsem\modules_czii\CoincidenceFunctions.py", line 503, in run_coincidence_experiment
-    milling_process.start()
-  File "C:\Program Files\Enthought\Python\envs\AutoScript\lib\multiprocessing\process.py", line 121, in start
-    self._popen = self._Popen(self)
-  File "C:\Program Files\Enthought\Python\envs\AutoScript\lib\multiprocessing\context.py", line 224, in _Popen
-    return _default_context.get_context().Process._Popen(process_obj)
-  File "C:\Program Files\Enthought\Python\envs\AutoScript\lib\multiprocessing\context.py", line 327, in _Popen
-    return Popen(process_obj)
-  File "C:\Program Files\Enthought\Python\envs\AutoScript\lib\multiprocessing\popen_spawn_win32.py", line 93, in __init__
-    reduction.dump(process_obj, to_child)
-  File "C:\Program Files\Enthought\Python\envs\AutoScript\lib\multiprocessing\reduction.py", line 60, in dump
-    ForkingPickler(file, protocol).dump(obj)
-TypeError: cannot pickle '_thread.lock' object
-Traceback (most recent call last):
-  File "<string>", line 1, in <module>
-  File "C:\Program Files\Enthought\Python\envs\AutoScript\lib\multiprocessing\spawn.py", line 107, in spawn_main
-    new_handle = reduction.duplicate(pipe_handle,
-  File "C:\Program Files\Enthought\Python\envs\AutoScript\lib\multiprocessing\reduction.py", line 79, in duplicate
-    return _winapi.DuplicateHandle(
-OSError: [WinError 6] The handle is invalid
-WARNING: Traceback (most recent call last):
-  File "C:\Users\User\Documents\github\openfibsem\Coincidence\fibsem\modules_czii\CoincidenceGUI.py", line 291, in update_dynamic_image_view
-    self.update_plot()
-  File "C:\Users\User\Documents\github\openfibsem\Coincidence\fibsem\modules_czii\CoincidenceGUI.py", line 312, in update_plot
-    self.ax_hist.hist(self.dynamic_view.image.flatten(), bins=50, color='gray')
-  File "C:\Users\User\Documents\github\openfibsem\Coincidence\venv\lib\site-packages\matplotlib\__init__.py", line 1474, in inner
-    return func(ax, *map(sanitize_sequence, args), **kwargs)
-  File "C:\Users\User\Documents\github\openfibsem\Coincidence\venv\lib\site-packages\matplotlib\axes\_axes.py", line 6851, in hist
-    bars = _barfunc(bins[:-1]+boffset, height, width,
-  File "C:\Users\User\Documents\github\openfibsem\Coincidence\venv\lib\site-packages\matplotlib\__init__.py", line 1474, in inner
-    return func(ax, *map(sanitize_sequence, args), **kwargs)
-  File "C:\Users\User\Documents\github\openfibsem\Coincidence\venv\lib\site-packages\matplotlib\axes\_axes.py", line 2486, in bar
-    self.add_patch(r)
-  File "C:\Users\User\Documents\github\openfibsem\Coincidence\venv\lib\site-packages\matplotlib\axes\_base.py", line 2379, in add_patch
-    self._update_patch_limits(p)
-  File "C:\Users\User\Documents\github\openfibsem\Coincidence\venv\lib\site-packages\matplotlib\axes\_base.py", line 2422, in _update_patch_limits
-    self.update_datalim(xys, updatex=updatex, updatey=updatey)
-  File "C:\Users\User\Documents\github\openfibsem\Coincidence\venv\lib\site-packages\matplotlib\axes\_base.py", line 2506, in update_datalim
-    self.dataLim.update_from_data_xy(xys, self.ignore_existing_data_limits,
-  File "C:\Users\User\Documents\github\openfibsem\Coincidence\venv\lib\site-packages\matplotlib\transforms.py", line 954, in update_from_data_xy
-    path = Path(xy)
-  File "C:\Users\User\Documents\github\openfibsem\Coincidence\venv\lib\site-packages\matplotlib\path.py", line 152, in __init__
-    self._update_values()
-  File "C:\Users\User\Documents\github\openfibsem\Coincidence\venv\lib\site-packages\matplotlib\path.py", line 206, in _update_values
-    mpl.rcParams['path.simplify'] and
-  File "C:\Users\User\Documents\github\openfibsem\Coincidence\venv\lib\site-packages\matplotlib\__init__.py", line 778, in __getitem__
-    return self._get(key)
-  File "C:\Users\User\Documents\github\openfibsem\Coincidence\venv\lib\site-packages\matplotlib\__init__.py", line 725, in _get
-    return dict.__getitem__(self, key)
+    def start_coincidence_milling(self, beam_current, resume=False):
+        if self.oa.manufacturer != 'Demo':
+            self.oa.thermo_microscope.imaging.set_active_view(2)
+            self.oa.thermo_microscope.beams.ion_beam.beam_current.value = beam_current
+            if resume is False:
+                self.oa.thermo_microscope.patterning.start()
+            else:
+                self.oa.thermo_microscope.patterning.resume()
+            while self.milling_queue != 'Done':
+                time.sleep(0.1)
+            self.oa.thermo_microscope.patterning.stop()
+
+        else:
+            print('Milling ...')

@@ -1,0 +1,36 @@
+Exception in thread Thread-4:
+Traceback (most recent call last):
+  File "C:\Program Files\Enthought\Python\envs\AutoScript\lib\threading.py", line 932, in _bootstrap_inner
+    self.run()
+  File "C:\Program Files\Enthought\Python\envs\AutoScript\lib\threading.py", line 870, in run
+    self._target(*self._args, **self._kwargs)
+  File "C:\Users\User\Documents\github\openfibsem\Coincidence\fibsem\modules_czii\CoincidenceGUI.py", line 340, in run
+    self.coincidence.run_coincidence_experiment(callback=gui_safe_callback,
+  File "C:\Users\User\Documents\github\openfibsem\Coincidence\fibsem\modules_czii\CoincidenceFunctions.py", line 500, in run_coincidence_experiment
+    milling_process.start()
+  File "C:\Program Files\Enthought\Python\envs\AutoScript\lib\multiprocessing\process.py", line 121, in start
+    self._popen = self._Popen(self)
+  File "C:\Program Files\Enthought\Python\envs\AutoScript\lib\multiprocessing\context.py", line 224, in _Popen
+    return _default_context.get_context().Process._Popen(process_obj)
+  File "C:\Program Files\Enthought\Python\envs\AutoScript\lib\multiprocessing\context.py", line 327, in _Popen
+    return Popen(process_obj)
+  File "C:\Program Files\Enthought\Python\envs\AutoScript\lib\multiprocessing\popen_spawn_win32.py", line 45, in __init__
+    prep_data = spawn.get_preparation_data(process_obj._name)
+  File "C:\Program Files\Enthought\Python\envs\AutoScript\lib\multiprocessing\spawn.py", line 154, in get_preparation_data
+    _check_not_importing_main()
+  File "C:\Program Files\Enthought\Python\envs\AutoScript\lib\multiprocessing\spawn.py", line 134, in _check_not_importing_main
+    raise RuntimeError('''
+RuntimeError: 
+        An attempt has been made to start a new process before the
+        current process has finished its bootstrapping phase.
+
+        This probably means that you are not using fork to start your
+        child processes and you have forgotten to use the proper idiom
+        in the main module:
+
+            if __name__ == '__main__':
+                freeze_support()
+                ...
+
+        The "freeze_support()" line can be omitted if the program
+        is not going to be frozen to produce an executable.

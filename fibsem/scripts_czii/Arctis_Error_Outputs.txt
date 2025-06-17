@@ -1,4 +1,4 @@
-    def start_coincidence_milling(self, beam_current, resume=False):
+    def start_coincidence_milling(self, beam_current, command_queue, resume=False):
         if self.oa.manufacturer != 'Demo':
             self.oa.thermo_microscope.imaging.set_active_view(2)
             self.oa.thermo_microscope.beams.ion_beam.beam_current.value = beam_current
@@ -6,7 +6,11 @@
                 self.oa.thermo_microscope.patterning.start()
             else:
                 self.oa.thermo_microscope.patterning.resume()
-            while self.milling_queue != 'Done':
+            while True:
+                if not command_queue.empty():
+                    cmd = command_queue.get()
+                    if cmd == 'Done':
+                        break
                 time.sleep(0.1)
             self.oa.thermo_microscope.patterning.stop()
 

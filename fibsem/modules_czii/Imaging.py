@@ -21,7 +21,7 @@ class Imaging():
     def __init__(self, oa, beam='ion', imaging_settings = None):
         self.oa = oa
         if imaging_settings is None:
-            self.imaging_settings, self.imaging_settings_dict = self.oa.read_from_yaml(filename=f"imaging_{beam}")
+            self.imaging_settings, self.imaging_settings_dict = self.oa.read_from_yaml(f"imaging_{beam}")
         else:
             self.imaging_settings = imaging_settings
             _, self.imaging_settings_dict = self.oa.read_from_yaml(filename=f"imaging_{beam}")

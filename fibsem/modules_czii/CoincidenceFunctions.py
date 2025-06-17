@@ -407,23 +407,33 @@ class CoincidenceFunctions:
 #####       Functions required for the automatic processing
 #######################################################################################################################
 
-    def start_coincidence_milling(self, beam_current):
+    def start_coincidence_milling(self, beam_current, resume=False):
         if self.oa.manufacturer != 'Demo':
-            print("I have to add this here.")
+            self.oa.thermo_microscope.beams.ion_beam.beam_current.value = beam_current
+            pattern = self.oa.thermo_microscope.patterning.get_patterns()
+            if resume is False:
+                pattern.start()
+            else:
+                pattern.resume()
         else:
             print('Milling ...')
 
-    def stop_coincidence_milling(self):
+    def stop_coincidence_milling(self, pause=False):
         if self.oa.manufacturer != 'Demo':
-            print("I have to add this here.")
+            pattern = self.oa.thermo_microscope.patterning.get_patterns()
+            if pause is False:
+                pattern.stop()
+                self.oa.thermo_microscope.patterning.clear_patterns()
+            else:
+                pattern.pause()
         else:
             print('Milling stopped!')
 
-    def run_coincidence_experiment(self, callback, stop_event, start_timestamp=0.0, test=False, row=None, beam_current=None):
+    def run_coincidence_experiment(self, callback, stop_event, resume=False, pause=False, start_timestamp=0.0, test=False, row=None, beam_current=None):
         def wait_and_finalize_imaging_thread():
             self.imaging_thread.join()
             print("[INFO] Fluorescence experiment stopped.")
-            self.stop_coincidence_milling()
+            self.stop_coincidence_milling(pause)
             print("[INFO] Milling stopped")
 
         if self.mode == 'auto' and test is False:
@@ -433,7 +443,7 @@ class CoincidenceFunctions:
                 status_update = self.run_move_to_stored_location(i)
                 if status_update is True:
                     self.grab_fluorescence_image(i, add_on='before')
-                    self.start_coincidence_milling(beam_current)
+                    self.start_coincidence_milling(beam_current, resume)
                     print("[INFO] Starting the milling ...")
 
                     self.imaging_thread = threading.Thread(target=self.run_serial_acquisition_fl_images,
@@ -458,10 +468,12 @@ class CoincidenceFunctions:
 
         elif self.mode == 'manual':
             if self.oa.manufacturer != 'Demo':
-                self.imaging.acquire_image(hfw=self.hfw, beam_type='ion', autofocus=True, filename=f"FIB-before-image")
                 beam_current = self.oa.thermo_microscope.beams.ion_beam.beam_current.value
             else:
                 beam_current = 0.2
+            self.imaging.acquire_image(hfw=self.hfw, folder_path=self.manual_folder_path,
+                                       beam_type='ion', autofocus=True, filename=f"FIB-before-image")
+
             self.start_coincidence_milling(beam_current)
             print("[INFO] Starting the milling ...")
             self.imaging_thread = threading.Thread(target=self.run_serial_acquisition_fl_images,
@@ -486,16 +498,14 @@ class CoincidenceFunctions:
         self.acquire_fl_z_stack()
         formatted_times = [
             f"{int((x - x_data[0]) // 60):02}:{int((x - x_data[0]) % 60):02}.{int(((x - x_data[0]) % 1) * 1000):03}"
-            for x in x_data
-        ]
+            for x in x_data]
         intensity_data = np.column_stack((formatted_times, y_data))
         np.savetxt(os.path.join(path, "roi_intensities.csv"), intensity_data, delimiter=",", fmt="%s",
                    header="timestamp, average_intensity", comments='')
         np.save(os.path.join(path, "roi_intensities.npy"), intensity_data)
         print("[INFO] Coincidence experiment terminated successfully.")
 
-        print("I still have to optimize the final acquisition of the FIB image and the acquisition of the FIB image before starting the experiment")
-        self.imaging.acquire_image(hfw=self.hfw, beam_type='ion', autofocus=True, filename=f"FIB-after-image")
+        self.imaging.acquire_image(hfw=self.hfw, folder_path=path, beam_type='ion', autofocus=True, filename=f"FIB-after-image")
         if self.on_experiment_stopped:
             self.on_experiment_stopped()
 

@@ -1,10 +1,45 @@
+import time
+import queue  # for Empty exception
+
 def start_coincidence_milling(oa, beam_current, command_queue, resume=False):
     if oa.manufacturer != 'Demo':
         oa.thermo_microscope.imaging.set_active_view(2)
         oa.thermo_microscope.beams.ion_beam.beam_current.value = beam_current
-        while command_queue.get() == 'Start':
-            if resume is False:
-                oa.thermo_microscope.patterning.start()
-                print('milling is running...')
-            else:
-                oa.thermo_microscope.patterning.resume()
+
+        milling_active = False
+
+        while True:
+            try:
+                cmd = command_queue.get_nowait()
+                if cmd == 'Start':
+                    if not milling_active:
+                        if resume:
+                            oa.thermo_microscope.patterning.resume()
+                        else:
+                            oa.thermo_microscope.patterning.start()
+                        print('[MILLING] Started')
+                        milling_active = True
+
+                elif cmd == 'Pause':
+                    if milling_active:
+                        oa.thermo_microscope.patterning.pause()
+                        print('[MILLING] Paused')
+                        milling_active = False
+
+                elif cmd == 'Stop':
+                    if milling_active:
+                        oa.thermo_microscope.patterning.stop()
+                        print('[MILLING] Stopped')
+                        milling_active = False
+                    break  # Exit loop and end process
+
+                elif cmd == 'Resume':
+                    if not milling_active:
+                        oa.thermo_microscope.patterning.resume()
+                        print('[MILLING] Resumed')
+                        milling_active = True
+
+            except queue.Empty:
+                pass  # No new command — continue loop
+
+            time.sleep(0.1)

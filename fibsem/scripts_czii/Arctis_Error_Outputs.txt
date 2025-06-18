@@ -1,29 +1,8 @@
-Exception in thread Thread-3:
 Traceback (most recent call last):
-  File "C:\Program Files\Enthought\Python\envs\AutoScript\lib\threading.py", line 932, in _bootstrap_inner
-    self.run()
-  File "C:\Program Files\Enthought\Python\envs\AutoScript\lib\threading.py", line 870, in run
-    self._target(*self._args, **self._kwargs)
-  File "C:\Users\User\Documents\github\openfibsem\Coincidence\fibsem\modules_czii\CoincidenceGUI.py", line 342, in run
-    self.coincidence.run_coincidence_experiment(callback=gui_safe_callback,
-  File "C:\Users\User\Documents\github\openfibsem\Coincidence\fibsem\modules_czii\CoincidenceFunctions.py", line 517, in run_coincidence_experiment
-    self.milling_process.start()
-  File "C:\Program Files\Enthought\Python\envs\AutoScript\lib\multiprocessing\process.py", line 121, in start
-    self._popen = self._Popen(self)
-  File "C:\Program Files\Enthought\Python\envs\AutoScript\lib\multiprocessing\context.py", line 224, in _Popen
-    return _default_context.get_context().Process._Popen(process_obj)
-  File "C:\Program Files\Enthought\Python\envs\AutoScript\lib\multiprocessing\context.py", line 327, in _Popen
-    return Popen(process_obj)
-  File "C:\Program Files\Enthought\Python\envs\AutoScript\lib\multiprocessing\popen_spawn_win32.py", line 93, in __init__
-    reduction.dump(process_obj, to_child)
-  File "C:\Program Files\Enthought\Python\envs\AutoScript\lib\multiprocessing\reduction.py", line 60, in dump
-    ForkingPickler(file, protocol).dump(obj)
-TypeError: cannot pickle '_thread.lock' object
-Traceback (most recent call last):
-  File "<string>", line 1, in <module>
-  File "C:\Program Files\Enthought\Python\envs\AutoScript\lib\multiprocessing\spawn.py", line 107, in spawn_main
-    new_handle = reduction.duplicate(pipe_handle,
-  File "C:\Program Files\Enthought\Python\envs\AutoScript\lib\multiprocessing\reduction.py", line 79, in duplicate
-    return _winapi.DuplicateHandle(
-OSError: [WinError 6] The handle is invalid
-
+  File "C:\Users\User\Documents\github\openfibsem\Coincidence\fibsem\modules_czii\Main.py", line 19, in <module>
+    CoincidenceGUI(oa=oa, mode='manual', color='Red')
+  File "C:\Users\User\Documents\github\openfibsem\Coincidence\fibsem\modules_czii\CoincidenceGUI.py", line 47, in __init__
+    self.manual_gui_window = ManualCoincidenceGUI(self.oa, self.coincidence)
+  File "C:\Users\User\Documents\github\openfibsem\Coincidence\fibsem\modules_czii\CoincidenceGUI.py", line 219, in __init__
+    self.coincidence.set_data_callback(self.receive_data())
+TypeError: receive_data() missing 1 required positional argument: 'value'

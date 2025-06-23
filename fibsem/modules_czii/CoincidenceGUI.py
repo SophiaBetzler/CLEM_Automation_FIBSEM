@@ -31,18 +31,19 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt, QEventLoop, QObject, pyqtSignal, QThread, QTimer, QMetaObject, QRectF, QPointF
 from PyQt5.QtGui import QBrush, QColor, QIcon, QImage, QPixmap, QPen
-
+from multiprocessing import Queue
 
 class CoincidenceGUI:
     """
     Sole purpose of this class is to open the GUI controlling the process.
     """
-    def __init__(self, oa, mode):
+    def __init__(self, oa, mode, color):
         self.oa = oa
         self.mode = mode
-        self.coincidence = CoincidenceFunctions(oa=self.oa, mode=self.mode)
+        self.color = color
+        self.coincidence = CoincidenceFunctions(oa=self.oa, mode=self.mode, color=self.color)
         self.app = QApplication(sys.argv)
-        self.auto_gui_window = AutoCoincidenceGUI(self.oa, self.coincidence)
+        #self.auto_gui_window = AutoCoincidenceGUI(self.oa, self.coincidence)
         self.manual_gui_window = ManualCoincidenceGUI(self.oa, self.coincidence)
         self.run()
 
@@ -54,8 +55,8 @@ class CoincidenceGUI:
             manual_win.setWindowTitle('Tool to perform manual coincidence experiment on the Arctis.')
             manual_win.resize(1200, 800)
             manual_win.show()
-        elif self.mode == 'auto':
-            self.auto_gui_window.show()
+        #elif self.mode == 'auto':
+        #    self.auto_gui_window.show()
         else:
             self.error_messagebox("No valid mode selected. Options are 'manual' or 'auto'.")
         self.app.exec()
@@ -211,12 +212,14 @@ class ManualCoincidenceGUI(QWidget):
         super().__init__()
         self.oa = oa
         self.coincidence = coin
-        self.coincidence.on_experiment_stopped = self.show_experiment_finished_message
         self.static_view = ZoomableGraphicsView(with_roi=True)
         self.dynamic_view = ZoomableGraphicsView(with_roi=False)
         self.image_received.connect(self.update_dynamic_image)
+        self.coincidence.set_data_callback(self.receive_data)
         self.x_data = []
         self.y_data = []
+        self.go = False
+        self.done = False
 
         self.figure, (self.ax_line, self.ax_hist) = plt.subplots(1, 2, figsize=(8, 4))
         self.canvas = FigureCanvas(self.figure)
@@ -266,6 +269,7 @@ class ManualCoincidenceGUI(QWidget):
 
         self.vmin, self.vmax = 0, 255
         self.static_img = self.coincidence.grab_fluorescence_image(add_on='before')
+        #self.static_img = np.zeros((512, 512), dtype=np.uint8)
         self.dynamic_img = np.zeros((512, 512), dtype=np.uint8)
         self.update_static_image()
 
@@ -324,7 +328,6 @@ class ManualCoincidenceGUI(QWidget):
             pass
 
     def start_coincidence_experiment(self, start_timestamp=0.0):
-        self.timer.start(100)
         self.coincidence.coin_stop_event.clear()
 
         def gui_safe_callback(image, timestamp):
@@ -340,10 +343,13 @@ class ManualCoincidenceGUI(QWidget):
                                                         start_timestamp=start_timestamp)
 
         threading.Thread(target=run, daemon=True).start()
+        if self.go is True:
+            self.timer.start(100)
 
     def pause_coincidence_experiment(self):
         self.coincidence.coin_stop_event.set()
         self.timer.stop()
+        self.coincidence.pause_not_stop = True
         print("[INFO] Execution of the coincidence experiment is paused.")
 
     def resume_coincidence_experiment(self):
@@ -364,21 +370,54 @@ class ManualCoincidenceGUI(QWidget):
         choice = box.exec_()
         if choice == QMessageBox.Ok:
             return
+    def write_final_data_to_disk(self, roi_coordinates, x_data, y_data):
+        before_img = cv2.imread(os.path.join(self.path, "FL_image_before.tif"))
+        cv2.rectangle(before_img, (roi_coordinates[0], roi_coordinates[1]),
+                      (roi_coordinates[0] + roi_coordinates[2], roi_coordinates[1] + roi_coordinates[3]),
+                      color=(0, 0, 255), thickness=2)
+        cv2.imwrite(os.path.join(self.path, "ROI_after_exp.tif"), before_img)
+        formatted_times = [
+            f"{int((x - x_data[0]) // 60):02}:{int((x - x_data[0]) % 60):02}.{int(((x - x_data[0]) % 1) * 1000):03}"
+            for x in x_data]
+        intensity_data = np.column_stack((formatted_times, y_data))
+        np.savetxt(os.path.join(self.path, "roi_intensities.csv"), intensity_data, delimiter=",", fmt="%s",
+                   header="timestamp, average_intensity", comments='')
+        np.save(os.path.join(self.path, "roi_intensities.npy"), intensity_data)
+        print("[INFO] Coincidence experiment terminated successfully.")
+        if self.done is True:
+            self.show_experiment_finished_message()
 
 
     def stop_coincidence_experiment(self):
         self.timer.stop()
+        self.coincidence.pause_not_stop = False
         self.coincidence.coin_stop_event.set()
         self.dynamic_img = np.zeros_like(self.dynamic_img)
         self.dynamic_view.update_image(self.dynamic_img)
         roi = self.static_view.get_roi_rect()
         roi_coordinates = int(roi.x()), int(roi.y()), int(roi.width()), int(roi.height())
-        self.coincidence.stop_coincidence_experiment(roi_coordinates, self.x_data, self.y_data)
-
+        self.write_final_data_to_disk(roi_coordinates, self.x_data, self.y_data)
 
     def capture_static_image(self):
         self.static_img = np.random.randint(0, 255, (512, 512), dtype=np.uint8)
         self.update_static_image()
+
+    def receive_data(self, data_type, data):
+        def receive_path(data):
+            self.path = data
+
+        def receive_go(data):
+            self.go = data
+
+        def receive_done(data):
+            self.done = data
+
+        if data_type == "path":
+            receive_path(data)
+        elif data_type == 'go':
+            receive_go(data)
+        elif data_type == 'done':
+            receive_done(data)
 
 
 class AutoCoincidenceGUI(QWidget):

@@ -14,23 +14,21 @@ import glob
 from skimage import io
 
 
-class Imaging():
+class Imaging:
     """
     This class combines all different imaging modalities developed here.
     """
     def __init__(self, oa, beam='ion', imaging_settings = None):
         self.oa = oa
-        if imaging_settings is None:
-            self.imaging_settings, self.imaging_settings_dict = self.oa.read_from_yaml(f"imaging_{beam}")
-        else:
-            self.imaging_settings = imaging_settings
-            _, self.imaging_settings_dict = self.oa.read_from_yaml(filename=f"imaging_{beam}")
         self.beam = beam
         self.beam_type = getattr(structures.BeamType, self.beam.upper())
+        if imaging_settings is None:
+            self.imaging_settings, self.imaging_settings_dict = self.oa.read_from_yaml(f"imaging_{self.beam}")
+        else:
+            self.imaging_settings = imaging_settings
+            _, self.imaging_settings_dict = self.oa.read_from_yaml(filename=f"imaging_{self.beam}")
         self.imaging_settings.beam_type = self.beam_type
         self.beam_settings = structures.BeamSettings.from_dict(self.imaging_settings_dict, self.beam_type)
-        self.imaging_settings.path = self.oa.folder_path
-        self.oa.fib_microscope.set_beam_settings(self.beam_settings)
 
     def update_beam_settings(self, new_beam_type):
         """
@@ -47,41 +45,49 @@ class Imaging():
         else:
             return self.imaging_settings, self.beam_settings
 
-    def acquire_image(self, hfw=None, folder_path=None, save=True, autofocus=False, beam_type=None,
-                      filename=None, imshow=False):
+    def acquire_image(self, hfw=None, working_distance=None, plasma_source=None, folder_path=None, save=True,
+                      autofocus=False, beam_type=None, filename=None, imshow=False):
         """
         This function connects to the buttons in the GUI. It allows to take electron beam, ion beam and electron and ion
         beam images. TO DO: Add ability to take fluorescence images.
         key = 'electron', 'ion', 'both'
         Data are saved to the hard drive.
         """
-        if beam_type is not None:
-            imaging_settings, imaging_settings_dict = self.update_beam_settings(beam_type)
-        else:
-            imaging_settings = self.imaging_settings
-            beam_settings = self.beam_settings
+
+        if beam_type is not None and beam_type != self.beam:
+            self.imaging_settings, imaging_settings_dict = self.update_beam_settings(beam_type)
+            self.beam_settings = structures.BeamSettings.from_dict(self.imaging_settings_dict, self.beam_type)
+            self.fib_microscope.set_image
+
         if filename is None:
             acquisition_time = datetime.now().strftime("%H-%M")
-            imaging_settings.filename = acquisition_time
+            self.imaging_settings.filename = acquisition_time
         else:
-            imaging_settings.filename = filename
+            self.imaging_settings.filename = filename
+
         if hfw is not None:
-            imaging_settings.hfw = hfw
+            self.imaging_settings.hfw = hfw
+        if working_distance is not None:
+            self.beam_settings.working_distance = working_distance
+
         if folder_path is not None:
-            imaging_settings.path = folder_path
-            print(f"Imaging path {imaging_settings.path}")
+            self.imaging_settings.path = folder_path
         self.imaging_settings.save = save
+
         if beam_type == 'ion':
-            self.oa.fib_microscope.set("plasma_gas", self.imaging_settings_dict['plasma_source'],
-                                beam_type=self.beam_type)
-            self.oa.fib_microscope.set("plasma", self.imaging_settings_dict['plasma'],
-                                beam_type=self.beam_type)
-            self.oa.fib_microscope.set_beam_settings(self.beam_settings)
+            current_plasma_source = self.oa.fib_microscope.get("plasma_gas")
+            if plasma_source is not None and current_plasma_source != plasma_source:
+                self.oa.fib_microscope.set("plasma_gas", self.imaging_settings_dict['plasma_source'],
+                                    beam_type=self.beam_type)
+                self.oa.fib_microscope.set("plasma", self.imaging_settings_dict['plasma'],
+                                    beam_type=self.beam_type)
+
         try:
+            self.oa.fib_microscope.set("current", self.beam_settings.beam_current, self.beam_type)
             if autofocus is True and self.oa.fib_settings is not None:
                 calibration.auto_focus_beam(self.oa.fib_microscope, self.oa.fib_settings, getattr(structures.BeamType,
                                                                                                   beam_type.upper()))
-            image = acquire.new_image(self.oa.fib_microscope, imaging_settings)
+            image = acquire.new_image(self.oa.fib_microscope, self.imaging_settings)
             if imshow is True:
                 plt.ion()  # needed to avoid the QCoreApplication::exec: The event loop is already running error
                 plt.imshow(image.data, cmap='gray')
@@ -170,9 +176,6 @@ class Imaging():
         #     filenames = sorted(glob.glob(os.path.join(imaging_settings.path, "tile*_eb.tif")))
         # elif self.beam == 'ion':
         #     filenames = sorted(glob.glob(os.path.join(imaging_settings.path, "tile*_ib.tif")))
-
-
-
 
     def fast_acquire(self, number_frames, line_acquisition=False):
         """

@@ -1,67 +1,50 @@
-from sympy.codegen.ast import continue_
 
-from Basic_Functions import OverArch
-from fibsem import utils, structures, microscope
-from fibsem.structures import FibsemStagePosition
+from fibsem.structures import FibsemStagePosition, BeamType
+
 from GIS_Sputter_Setup import GisSputterAutomation
-import matplotlib
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.figure import Figure
-import matplotlib.patches as patches
-import matplotlib.image as mpimg
+from Imaging import Imaging
+
+import sys
+import time
 import copy
 import queue
 import platform
-import time
+import json
+import os
+import threading
+import statistics
+from datetime import datetime, date
+from pathlib import Path
+from collections import namedtuple, deque
+from concurrent.futures import ThreadPoolExecutor
+import re
+
+import tifffile
+import cv2
+import numpy as np
+
 pc_type = platform.system()
+import matplotlib
 if pc_type == 'Windows':
     matplotlib.use('Qt5Agg')
 elif pc_type == 'Darwin':
     matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as plt
-import numpy as np
-from multiprocessing import Process, Event, Queue
-from matplotlib.widgets import RectangleSelector, Button
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-
-#from autoscript_sdb_microscope_client import SdbMicroscopeClient
-import sys
-from PyQt5.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QHBoxLayout, QFrame, QMessageBox, QFormLayout, QLineEdit,
-    QTableWidget, QTableWidgetItem, QPushButton, QLabel, QSpinBox, QCheckBox, QGridLayout, QFileDialog,
-    QDialog
-)
-from PyQt5.QtCore import Qt, QEventLoop, QObject, pyqtSignal, QThread, QTimer, QMetaObject
-from PyQt5.QtGui import QBrush, QColor, QIcon
-from PyQt5.QtCore import Qt
-from collections import namedtuple
-import json
 import matplotlib.image as mpimg
-import os
-from Imaging import Imaging
-import tifffile
-import cv2
-import threading
-from datetime import datetime
-import statistics
-from collections import deque
-from datetime import datetime
-from pathlib import Path
-from datetime import date
+
+
 sys.path.append('C:\Program Files\Thermo Scientific Autoscript')
 sys.path.append('C:\Program Files\Enthought\Python\envs\AutoScript\Lib\site-packages')
-import queue
-from autoscript_sdb_microscope_client import SdbMicroscopeClient
-from autoscript_sdb_microscope_client.enumerations import *
-from autoscript_sdb_microscope_client.structures import GetImageSettings
-from autoscript_sdb_microscope_client import SdbMicroscopeClient
 
-
+#from autoscript_sdb_microscope_client import SdbMicroscopeClient
+#from autoscript_sdb_microscope_client.enumerations import *
+#from autoscript_sdb_microscope_client.structures import GetImageSettings
+#from autoscript_sdb_microscope_client import SdbMicroscopeClient
 
 
 
 class CoincidenceFunctions:
-    def __init__(self, oa, mode, color, on_experiment_stopped=None):
+    def __init__(self, oa, mode, on_experiment_stopped=None):
         self.results = None
         self.oa = oa
         if self.oa.tool != 'Arctis':
@@ -71,20 +54,13 @@ class CoincidenceFunctions:
         #self.oa.autoloader_control()
         self.position_data = []
         self.data_file = os.path.join(self.oa.folder_path, 'position_data.json')
-        self.hfw = 80.0e-6
+        self.hfw = 120.0e-6
         self.auto_gis = GisSputterAutomation(self.oa)
         self.lock  = threading.Lock()
         self.coin_stop_event = threading.Event()
-        self.color = color
         self.pause_not_stop = False
         self.data_callback = None
         self.on_experiment_stopped = on_experiment_stopped
-        self.dict_available_colors = {'Blue': CameraEmissionType.BLUE,
-                                      'GreenYellow': CameraEmissionType.GREEN_YELLOW,
-                                      'Red': CameraEmissionType.RED,
-                                      'Violet': CameraEmissionType.VIOLET}
-
-
 
 
 #######################################################################################################################
@@ -97,14 +73,17 @@ class CoincidenceFunctions:
             image = self.oa.thermo_microscope.imaging.get_image()
             if save is True:
                 image.save(os.path.join(self.oa.temp_folder_path, f"fl_image.tif"))
+            img = image.data
         else:
             sim = self.fl_data_simulation()
             image = sim()
             if save is True:
                 tifffile.imwrite(os.path.join(self.oa.temp_folder_path, f"fl_image.tif"), image)
-        return image
-    def grab_reflection_image(self, row=None):
+            img = image
+            print('[INFO] Collecting live FL image.')
+        return img
 
+    def grab_reflection_image(self, row=None):
         if self.oa.manufacturer != 'Demo':
             self.oa.thermo_microscope.imaging.set_active_view(3)
             self.oa.thermo_microscope.imaging.set_active_device(8)
@@ -112,12 +91,23 @@ class CoincidenceFunctions:
             self.oa.thermo_microscope.detector.brightness.value = 0.01
             self.oa.thermo_microscope.detector.camera_settings.binning.value = 4
             self.oa.thermo_microscope.detector.camera_settings.exposure_time.value = 0.001
-            ref_image = self.grab_reflection_image()
+            emission_color = self.oa.thermo_microscope.detector.camera_settings.emission.type.value
+            self.oa.thermo_microscope.detector.camera_settings.emission.start(emission_type=
+                                                                              emission_color)
+            reflection_image = self.grab_fl_live_image()
+            self.oa.thermo_microscope.detector.camera_settings.emission.stop()
+            if self.mode == 'auto':
+                reflection_image.save(os.path.join(self.oa.folder_path, f"{row}-Dataset", f"{row}_reflection_image.tif"))
+            else:
+                reflection_image.save(os.path.join(self.manual_folder_path, f"reflection_image.tif"))
+
         else:
-            ref_image = (np.random.rand(512, 512) * 255).astype(np.uint8)
+            sim = self.fl_data_simulation()
+            image = sim()
+            tifffile.imwrite(os.path.join(self.manual_folder_path, f"reflection_image.tif"), image)
+            print('[INFO] Collecting reflection FL image.')
 
     def grab_fluorescence_image(self, add_on, row=None):
-        now = datetime.now()
         if self.mode == 'auto' and self.oa.manufacturer != 'Demo':
             self.oa.thermo_microscope.imaging.set_active_view(3)
             self.oa.thermo_microscope.imaging.set_active_device(8)
@@ -125,24 +115,18 @@ class CoincidenceFunctions:
             self.oa.thermo_microscope.detector.camera_settings.binning.value = self.position_data[row]['fl_settings']
             ['binning']
             self.oa.thermo_microscope.detector.brightness.value = self.position_data[row]['brightness']
-            self.oa.thermo_microscope.detector.camera_settings.exposure_time.value = self.position_data[row]['fl_settings']
-            ['exposure_time']
-            self.oa.thermo_microscope.detector.camera_settings.filter.type.value = self.position_data[row]['fl_settings']
-            ['filter_setting']
-            self.oa.thermo_microscope.detector.camera_settings.emission.type = self.position_data[row]['fl_settings']
-            ['emission_color']
-            self.oa.thermo_microscope.detector.camera_settings.focus.value = self.position_data[row]['fl_settings']
-            ['objective_focus']
+            self.oa.thermo_microscope.detector.camera_settings.exposure_time.value \
+                = self.position_data[row]['fl_settings']['exposure_time']
+            self.oa.thermo_microscope.detector.camera_settings.filter.type.value \
+                = self.position_data[row]['fl_settings']['filter_setting']
+            self.oa.thermo_microscope.detector.camera_settings.emission.type \
+                = self.position_data[row]['fl_settings']['emission_color']
+            self.oa.thermo_microscope.detector.camera_settings.focus.value \
+                = self.position_data[row]['fl_settings']['objective_focus']
             image = self.oa.thermo_microscope.imaging.grab_frame(save=False)
             image.save(os.path.join(self.oa.folder_path, f"{row}-Dataset", f"{row}_fl_image_{add_on}.tif"))
             img = image.data
         elif self.mode == 'manual' and self.oa.manufacturer != 'Demo':
-            if not hasattr(self, "manual_folder_path"):
-                self.manual_folder_path = Path(
-                    os.path.join(self.oa.folder_path, str(date.today()), now.strftime("%H-%M")))
-                self.manual_folder_path.mkdir(parents=True, exist_ok=True)
-                if self.data_callback:
-                    self.data_callback('path', self.manual_folder_path)
             self.oa.thermo_microscope.imaging.set_active_view(3)
             self.oa.thermo_microscope.imaging.set_active_device(8)
             if self.oa.thermo_microscope.detector.camera_settings.filter.type.value == CameraFilterType.REFLECTION and hasattr(self.manual_binning):
@@ -158,14 +142,11 @@ class CoincidenceFunctions:
             image.save(os.path.join(self.manual_folder_path, f"Fl_image_{add_on}.tif"))
             img = image.data
         else:
-            if not hasattr(self, "manual_folder_path"):
-                self.manual_folder_path = Path(
-                    os.path.join(self.oa.folder_path, str(date.today()), now.strftime("%H-%M")))
-                self.manual_folder_path.mkdir(parents=True, exist_ok=True)
             sim = self.fl_data_simulation()
             image = sim()
             tifffile.imwrite(os.path.join(self.manual_folder_path, f"Fl_image_{add_on}.tif"), image)
             img = image
+            print('[INFO] Collecting FL image.')
         return img
 
     def run_serial_acquisition_fl_images(self, update_callback, stop_event, start_timestamp, row=None, fl_settings=None,
@@ -197,23 +178,26 @@ class CoincidenceFunctions:
 
             writer_thread = threading.Thread(target=self.image_writer, args=(folder_path, start_timestamp), daemon=True)
             writer_thread.start()
-
             i = 0
             start_time = datetime.now()
             emission_color = self.oa.thermo_microscope.detector.camera_settings.emission.type.value
             self.oa.thermo_microscope.detector.camera_settings.emission.start(emission_type=
-                                                                              emission_color)
+                                                                       emission_color)
+            image = self.oa.thermo_microscope.imaging.get_image()
             try:
                 if self.oa.thermo_microscope.imaging.state == ImagingState.ACQUIRING:
                     while not stop_event.is_set():
                         now = datetime.now()
                         timestamp = (now - start_time).total_seconds() + start_timestamp
-                        image = self.oa.thermo_microscope.imaging.get_image()
-                        self.image_queue.put((image.data.copy(), i))
-
-                        if update_callback:
-                            update_callback(image.data, timestamp)
-                        i += 1
+                        new_image = self.oa.thermo_microscope.imaging.get_image()
+                        if np.array_equal(new_image.data[:5], image.data[:5]) is False:
+                            self.image_queue.put((new_image.data.copy(), i))
+                            if update_callback:
+                                update_callback(new_image.data, timestamp)
+                            image = new_image
+                            i += 1
+                        else:
+                            continue
             except Exception as e:
                 print(f"[ERROR] Exception occurred: {e}")
             finally:
@@ -231,83 +215,25 @@ class CoincidenceFunctions:
             writer_thread.start()
             i = 0
             sim = self.fl_data_simulation()
+            image = sim()
             try:
                 while not stop_event.is_set():
                     now = datetime.now()
                     timestamp = (now - start_time).total_seconds() + start_timestamp
-                    image = sim()
-                    #image = np.random.randint(0, 255, (512, 512), dtype=np.uint8)
-                    self.image_queue.put((image.copy(), i))
-                    if update_callback:
-                        update_callback(image, timestamp)
-                    time.sleep(0.3)
-                    i += 1
+                    new_image = sim()
+                    if np.array_equal(new_image[:5], image[:5]) is False:
+                        self.image_queue.put((new_image.copy(), i))
+                        if update_callback:
+                            update_callback(new_image, timestamp)
+                        image = new_image
+                        i += 1
+                    else:
+                        continue
             except Exception as e:
                 print(f"[ERROR] Exception occurred: {e}")
             finally:
                 self.image_queue.put(None)
                 writer_thread.join()
-
-
-            ### OLD VERSION #####
-            # if fl_settings['roi'] is not None:
-            #     self.x_data = []
-            #     self.y_data = []
-            #     start_time = datetime.now()
-            #     i = 0
-            #     if self.oa.thermo_microscope.imaging.state == ImagingState.ACQUIRING:
-            #         while not stop_event.is_set():
-            #             now = datetime.now()
-            #             timestamp = (now - start_time).total_seconds()
-            #             image = self.oa.thermo_microscope.imaging.get_image()
-            #             self.image_queue.put((image.data.copy(), i))
-            #             self.oa.thermo_microscope.detector.camera_settings.emission.start(emission_type=
-            #                                                                               fl_settings['emission_color'])
-            #             av_intensity = np.nanmean(image.data[fl_settings['roi'][0]:fl_settings['roi'][1],
-            #                                       fl_settings['roi'][2]: fl_settings['roi'][3]])
-            #             self.x_data.append(timestamp)
-            #             self.y_data.append(av_intensity)
-            #             if update_callback:
-            #                 update_callback(timestamp, av_intensity)
-            #             i += 1
-            #     self.oa.thermo_microscope.detector.camera_settings.emission.stop()
-            #     self.oa.thermo_microscope.imaging.stop_acquisition()
-            #     self.image_queue.put(None)
-            #     writer_thread.join()
-            #     data = np.vstack([self.x_data, self.y_data]).T
-            #     np.save(os.path.join(self.oa.folder_path, f"{row}-Dataset", "Intensity_Data.npy"),
-            #             data)
-            # else:
-            #     raise RuntimeError('No ROI selected!')
-        # else:
-        #     self.x_data = []
-        #     self.y_data = []
-        #     start_time = datetime.now()
-        #     writer_thread = threading.Thread(target=self.image_writer, args=(row,), daemon=True)
-        #     writer_thread.start()
-        #     i=0
-        #     sim = self.fl_data_simulation()
-        #     try:
-        #         while not stop_event.is_set():
-        #             now = datetime.now()
-        #             timestamp = (now - start_time).total_seconds()
-        #             image = sim()
-        #             self.image_queue.put((image.copy(), i))
-        #             av_intensity = np.nanmean(image[fl_settings['roi'][0]:fl_settings['roi'][1],
-        #                                               fl_settings['roi'][2]: fl_settings['roi'][3]])
-        #             self.x_data.append(timestamp)
-        #             self.y_data.append(av_intensity)
-        #             if update_callback:
-        #                 update_callback(timestamp, av_intensity)
-        #             i += 1
-        #     except Exception as e:
-        #         print(f"[ERROR] Exception occurred: {e}")
-        #     finally:
-        #         self.image_queue.put(None)
-        #         writer_thread.join()
-        #         self.data = np.vstack([self.x_data, self.y_data]).T
-        #         np.save(os.path.join(self.oa.folder_path, f"{row}-Dataset", "Intensity_Data.npy"),
-        #                 self.data)
 
     def run_move_to_stored_location(self, row):
         if self.oa.manufacturer != 'Demo':
@@ -321,7 +247,8 @@ class CoincidenceFunctions:
                     image = tifffile.imread(os.path.join(self.oa.folder_path, f"{row}-image_ib.tif"))
                     shift_x, shift_y = self.stage_position_correction(image)
                     self.oa.fib_microscope.move_stage_relative(FibsemStagePosition(x=shift_x, y=-shift_y))
-                    self.oa.thermo_microscope.detector.camera_settings.focus.value = self.position_data[row]['fl_settings']['objective_focus']
+                    self.oa.thermo_microscope.detector.camera_settings.focus.value \
+                        = self.position_data[row]['fl_settings']['objective_focus']
                     return True
                 else:
                     return False
@@ -333,7 +260,7 @@ class CoincidenceFunctions:
             return True
 
     def stage_position_correction(self, reference_image):
-        current_image = self.imaging.acquire_image(hfw=self.hfw, beam_type='ion', save=False, autofocus=True)
+        current_image = self.imaging.acquire_image(hfw=self.hfw, save=False, autofocus=True)
         shift, response = cv2.phaseCorrelate(np.float64(current_image.data), np.float64(reference_image))
         pixelsize = self.hfw / np.shape(current_image.data)[1]
         return shift[0]*pixelsize, shift[1]*pixelsize
@@ -435,14 +362,14 @@ class CoincidenceFunctions:
         file_path = os.path.join(self.oa.folder_path, f"{row}-image_ib.tif")
         img = mpimg.imread(file_path)
 
-        plt.figure("Image Viewer")  # Optional: window title
+        plt.figure("Image Viewer")
         plt.imshow(img)
         plt.axis("off")
         plt.tight_layout()
         plt.show(block=False)
 
 #######################################################################################################################
-#####       Functions required for the automatic processing
+#####       Functions required for the execution of the experiment
 #######################################################################################################################
 
     def start_coincidence_milling(self, beam_current, stop_event, resume=False):
@@ -469,7 +396,8 @@ class CoincidenceFunctions:
         else:
             print('Milling stopped!')
 
-    def run_coincidence_experiment(self, callback, stop_event, start_timestamp=0.0, test=False, row=None, beam_current=None):
+    def run_coincidence_experiment(self, callback, stop_event, start_timestamp=0.0,
+                                   test=False, row=None, beam_current=None):
 
         def wait_and_finalize_imaging_thread():
             self.imaging_thread.join()
@@ -478,22 +406,35 @@ class CoincidenceFunctions:
             print("[INFO] Milling stopped")
 
         if self.mode == 'auto' and test is False:
-            for i in range(len(self.position_data)):
-                fl_settings = self.position_data[i]['fl_settings']
+            for row in range(len(self.position_data)):
+                fl_settings = self.position_data[row]['fl_settings']
+                roi = fl_settings['roi']
                 print("[INFO] Moving to stored sample position and insert iFLM objective to stored focus ...")
-                status_update = self.run_move_to_stored_location(i)
+                status_update = self.run_move_to_stored_location(row)
                 if status_update is True:
-                    self.grab_fluorescence_image(i, add_on='before')
-                    self.milling_thread = threading.Thread(target=self.start_coincidence_milling, args=(beam_current,))
-                    self.milling_thread.start()
-                    print("[INFO] Starting the milling ...")
-                    time.sleep(0.5)
-                    self.imaging_thread = threading.Thread(target=self.run_serial_acquisition_fl_images,
-                                                           args=(callback, stop_event, start_timestamp, i, fl_settings))
-                    print("[INFO] Performing the fluorescence experiment ...")
+                    now = datetime.now()
+                    self.working_distance = self.oa.fib_microscope.get_available_values(key='working_distance',
+                                                                                        beam_type=BeamType.ION)
+                    if self.oa.manufacturer != 'Demo':
+                        self.oa.thermo_microscope.imaging.set_active_view(2)
+                        self.imaging.acquire_image(hfw=self.hfw, folder_path=self.manual_folder_path,
+                                                   beam_type='ion', working_distance=self.working_distance,
+                                                   autofocus=True, filename=f"FIB-before-image")
+                        "HERE I NEED TO CREATE THE PATTERN!"
+                        self.milling_thread = threading.Thread(target=self.start_coincidence_milling,
+                                                                   args=(beam_current, stop_event))
+                        self.milling_thread.start()
+                        time.sleep(0.5)
+                        print("[INFO] Starting the milling ...")
+                        self.imaging_thread = threading.Thread(target=self.run_serial_acquisition_fl_images,
+                                                               args=(callback, stop_event, start_timestamp,
+                                                                     row, fl_settings))
+                        print("[INFO] Performing the fluorescence experiment ...")
+                        self.imaging_thread.start()
 
-                    #self.imaging_thread.start()
-                    #threading.Thread(target=wait_and_finalize_imaging_thread).start()
+                        wait_and_finalize_imaging_thread()
+                        if self.pause_not_stop is False:
+                            self.stop_coincidence_experiment()
 
         elif self.mode == 'auto' and test is True:
             fl_settings = self.position_data[row]['fl_settings']
@@ -511,65 +452,61 @@ class CoincidenceFunctions:
                 threading.Thread(target=wait_and_finalize_imaging_thread).start()
 
         elif self.mode == 'manual':
-            #self.working_distance = self.oa.fib_microscope.get_available_values(key='working_distance', beam_type=BeamType.ELECTRON)
-            if self.oa.manufacturer != 'Demo':
-                beam_current = self.oa.thermo_microscope.beams.ion_beam.beam_current.value
-            else:
-                beam_current = 0.2
-            self.oa.thermo_microscope.imaging.set_active_view(2)
-            patterns = self.oa.thermo_microscope.patterning.get_patterns()
-            if len(patterns) == 0:
-                print("[ERROR] Please create a milling pattern!")
-                return
-            if start_timestamp == 0.0:
-                # self.imaging.acquire_image(hfw=self.hfw, folder_path=self.manual_folder_path,
-                #                            beam_type='ion', autofocus=True, filename=f"FIB-before-image")
+            now = datetime.now()
+            if not hasattr(self, "manual_folder_path"):
+                self.manual_folder_path = Path(
+                    os.path.join(self.oa.folder_path, str(date.today()), now.strftime("%H-%M")))
+                self.manual_folder_path.mkdir(parents=True, exist_ok=True)
+                if self.data_callback:
+                    self.data_callback('path', self.manual_folder_path)
+            if self.selected_options['FIB Milling'] is True:
+                beam_current = self.oa.fib_microscope.get("current", beam_type=BeamType.ION)
+                self.working_distance = self.oa.fib_microscope.get("working_distance", beam_type=BeamType.ION)
 
-                self.milling_thread = threading.Thread(target=self.start_coincidence_milling, args=(beam_current, stop_event))
-            else:
-                resume = True
-                self.milling_thread = threading.Thread(target=self.start_coincidence_milling,
-                                                       args=(beam_current, stop_event, resume))
-            self.milling_thread.start()
-            time.sleep(0.5)
-            print("[INFO] Starting the milling ...")
-            self.imaging_thread = threading.Thread(target=self.run_serial_acquisition_fl_images,
-                                                    args=(callback, stop_event, start_timestamp))
-            print("[INFO] Performing the fluorescence experiment ...")
-            self.imaging_thread.start()
+                if self.oa.manufacturer != 'Demo':
+                    self.oa.thermo_microscope.imaging.set_active_view(2)
+                    patterns = self.oa.thermo_microscope.patterning.get_patterns()
+                    if len(patterns) == 0:
+                        print("[ERROR] Please create a milling pattern!")
+                        return
+
+                if start_timestamp == 0.0:
+                    if self.selected_options['Before/After FIB Image'] is True:
+                        self.imaging.acquire_image(hfw=self.hfw, folder_path=self.manual_folder_path,
+                                                beam_type='ion', working_distance=self.working_distance,
+                                                   autofocus=True, filename=f"FIB-before-image")
+
+                    self.milling_thread = threading.Thread(target=self.start_coincidence_milling, args=(beam_current, stop_event))
+                else:
+                    resume = True
+                    self.milling_thread = threading.Thread(target=self.start_coincidence_milling,
+                                                           args=(beam_current, stop_event, resume))
+                self.milling_thread.start()
+                time.sleep(0.5)
+                print("[INFO] Starting the milling ...")
+                self.imaging_thread = threading.Thread(target=self.run_serial_acquisition_fl_images,
+                                                        args=(callback, stop_event, start_timestamp))
+                print("[INFO] Performing the fluorescence experiment ...")
+                self.imaging_thread.start()
 
 
-            wait_and_finalize_imaging_thread()
-            if self.pause_not_stop is False:
-                self.stop_coincidence_experiment()
+                wait_and_finalize_imaging_thread()
+                if self.pause_not_stop is False:
+                    self.stop_coincidence_experiment()
+            elif self.selected_options['SEM Imaging'] is True:
+                print("[INFO] Not yet implemented.")
 
     def stop_coincidence_experiment(self):
-        print('I made it to here?')
-        self.grab_fluorescence_image(add_on='after')
-        print('I made it to here 2?')
-        self.acquire_fl_z_stack()
-        #self.acquire_reflection_image()
-        # self.imaging.acquire_image(hfw=self.hfw, folder_path=self.manual_folder_path, beam_type='ion', autofocus=True, filename=f"FIB-after-image")
+        if self.selected_options['After Z-Stack'] is True:
+            self.acquire_fl_z_stack()
+        if self.selected_options['After Reflection Image'] is True:
+            self.grab_reflection_image()
+        if self.selected_options['Before/After FIB Image'] is True:
+            self.imaging.acquire_image(hfw=self.hfw, working_distance=self.working_distance,
+                                       folder_path=self.manual_folder_path, beam_type='ion',
+                                       autofocus=True, filename=f"FIB-after-image")
         if self.data_callback:
             self.data_callback('done', True)
-
-    def acquire_reflection_image(self, row=None):
-        if self.oa.manufacturer != 'Demo':
-            ref_image = self.grab_reflection_image()
-        else:
-            ref_image = (np.random.rand(512, 512) * 255).astype(np.uint8)
-        if isinstance(ref_image, np.ndarray):
-            if self.mode == 'manual':
-                tifffile.imwrite(os.path.join(self.manual_folder_path, "Refraction_After.tif"), ref_image)
-            else:
-                tifffile.imwrite(os.path.join(self.oa.folder_path, f"{row}-Dataset", "Refraction_After.tif"),
-                                 ref_image)
-        else:
-            if self.mode == 'manual':
-                ref_image.save(os.path.join(self.manual_folder_path, "Refraction_After.tif"))
-            else:
-                tifffile.imwrite(os.path.join(self.oa.folder_path, f"{row}-Dataset", "Refraction_After.tif"),
-                                 ref_image)
 
     def acquire_fl_z_stack(self, row=None):
         if self.oa.manufacturer != 'Demo':
@@ -580,11 +517,9 @@ class CoincidenceFunctions:
             self.oa.thermo_microscope.detector.camera_settings.exposure_time.value = self.manual_exposure_time
             self.oa.thermo_microscope.detector.brightness.value = self.manual_brightness
             mid_focus = self.oa.thermo_microscope.detector.camera_settings.focus.value
-            print(mid_focus)
             z_stack = []
             for i in range(-5, 5):
                 z_stack.append(mid_focus + (i * 500e-9))
-            print(z_stack)
             # for i in range(-5, 5):
             #     self.oa.thermo_microscope.detector.camera_settings.focus.value = mid_focus + (i * 500e-6)
             #     image = self.grab_fl_live_image(save=False)
@@ -600,7 +535,6 @@ class CoincidenceFunctions:
         else:
             z_stack = []
             for i in range(-5, 5):
-
                 image = (np.random.rand(512, 512) * 255).astype(np.uint8)
                 if isinstance(image, np.ndarray):
                     z_stack.append(image)
@@ -611,7 +545,16 @@ class CoincidenceFunctions:
                 else:
                     tifffile.imwrite(os.path.join(self.oa.folder_path, f"{row}-Dataset", "Z_stack_after.tif"), z_stack)
 
+    #######################################################################################################################
+    #####       Functions required for insitu automatic data processing
+    #######################################################################################################################
 
+    def auto_image_processing(self, image, timestamp, roi):
+        print(image)
+        print(intensity)
+        print(roi)
+        self.timestamp.append(timestamp)
+        self.intensity.append(intensity)
 
 
 
@@ -674,15 +617,32 @@ class CoincidenceFunctions:
                 self.image_queue.task_done()
 
     def save_image(self, img, idx, folder_path, timestamp):
+
+        def get_highest_image_index(folder_path):
+            max_index = -1
+            pattern = re.compile(r"image_(\d+(?:\.\d+)?)\.tif")  # matches float-like numbers
+
+            for filename in os.listdir(folder_path):
+                match = pattern.match(filename)
+                if match:
+                    try:
+                        index = float(match.group(1))
+                        max_index = max(max_index, index)
+                    except ValueError:
+                        continue
+
+            return max_index if max_index >= 0 else None
+
         if timestamp == 0.0:
             path = os.path.join(folder_path, f"image_{idx:.1f}.tif")
         else:
-            path = os.path.join(folder_path, f"image_resumed_{idx:.1f}.tif")
+            max_index = get_highest_image_index(folder_path)
+            path = os.path.join(folder_path, f"image_{max_index+1+idx:.1f}.tif")
         tifffile.imwrite(path, img)
 
     def fl_data_simulation(self):
-        image_size = (512, 512)
-        spot_radius = 5
+        image_size = (4000, 4000)
+        spot_radius = 50
         drop_start_frame = np.random.uniform(500, 1000)
         drop_duration = 20
         frame_count = [0]

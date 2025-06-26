@@ -163,8 +163,9 @@ class CoincidenceFunctions:
                 self.oa.thermo_microscope.detector.camera_settings.binning.value = fl_settings['binning']
                 self.oa.thermo_microscope.detector.camera_settings.filter.type.value = fl_settings['filter_setting']
                 self.oa.thermo_microscope.imaging.start_acquisition()
-            if self.mode == 'manual':
-                folder_path = self.manual_folder_path
+            elif self.mode == 'manual':
+                folder_path = Path(os.path.join(self.manual_folder_path, "Images"))
+                folder_path.mkdir(parents=True, exist_ok=True)
                 self.oa.thermo_microscope.imaging.set_active_view(3)
                 self.oa.thermo_microscope.imaging.set_active_device(8)
                 self.oa.thermo_microscope.detector.camera_settings.exposure_time.value = self.manual_exposure_time
@@ -207,7 +208,8 @@ class CoincidenceFunctions:
                 writer_thread.join()
         else:
             if self.mode == 'manual':
-                folder_path = self.manual_folder_path
+                folder_path = Path(os.path.join(self.manual_folder_path, "Images"))
+                folder_path.mkdir(parents=True, exist_ok=True)
             else:
                 folder_path = os.path.join(self.oa.folder_path, f"{row}-Dataset")
             start_time = datetime.now()

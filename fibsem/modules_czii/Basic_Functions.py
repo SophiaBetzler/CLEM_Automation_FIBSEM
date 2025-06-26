@@ -37,7 +37,7 @@ def create_temp_folder(predefined_path=None):
     if predefined_path is None:
         current_date = datetime.now().strftime("%Y%m%d")
         desktop_path = Path.home() / "Desktop/"
-        folder_path = os.path.join(desktop_path, 'TestImages/', current_date)
+        folder_path = os.path.join(desktop_path, 'Experiment_Images/', current_date)
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
     else:
@@ -53,7 +53,7 @@ class BasicFunctions:
     virtual environment, connects to the microscope.
     """
 
-    def __init__(self):
+    def __init__(self, default_settings=False):
         create_temp_folder()
         self.project_root = Path(__file__).resolve().parent.parent
         self.python_root = Path(__file__).resolve().parent.parent.parent.parent
@@ -73,6 +73,7 @@ class BasicFunctions:
             self.tool = 'Hydra'
         with open(os.path.join(self.project_root, 'modules_czii', f"czii-stored-stage-positions_{self.tool.lower()}.yaml"), "r") as file:
             self.saved_stage_positions = yaml.safe_load(file)
+        self.default_settings = default_settings
         self.fib_microscope, self.fib_settings = self.connect_to_microscope()
 
 
@@ -189,8 +190,11 @@ class BasicFunctions:
             raise ValueError("No valid tool selected. Options are Hydra and Arctis")
 
         try:
-            fib_microscope, fib_settings = utils.setup_session(manufacturer=self.manufacturer,
-                                                               config_path=config_path)
+            if self.default_settings is False:
+                fib_microscope, fib_settings = utils.setup_session(manufacturer=self.manufacturer,
+                                                                   config_path=config_path)
+            else:
+                fib_microscope, fib_settings = utils.setup_session(manufacturer=self.manufacturer)
             return fib_microscope, fib_settings
 
         except Exception as e:
@@ -428,16 +432,9 @@ class BasicFunctions:
             elif new_grid_id != self.loaded_grid.id or self.loaded_grid is None:
                 self.thermo_microscope.specimen.autoloader.load(new_grid_id)
 
-
-
-
-
-
-
 class OverArch(BasicFunctions):
-    def __init__(self):
-        super().__init__()
-        print("CoreController ready")
+    def __init__(self, default_settings=False):
+        super().__init__(default_settings)
         self.id_available_grids()
 
     def set_variable(self, name, value):

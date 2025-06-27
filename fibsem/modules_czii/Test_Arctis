@@ -3,8 +3,10 @@ Traceback (most recent call last):
     CoincidenceGUI(oa=OverArch, mode='manual')
   File "C:\Users\User\Documents\github\openfibsem\Coincidence\fibsem\modules_czii\CoincidenceGUI.py", line 54, in __init__
     self.manual_gui_window = ManualCoincidenceGUI(self.oa, self.coincidence)
-  File "C:\Users\User\Documents\github\openfibsem\Coincidence\fibsem\modules_czii\CoincidenceGUI.py", line 261, in __init__
+  File "C:\Users\User\Documents\github\openfibsem\Coincidence\fibsem\modules_czii\CoincidenceGUI.py", line 265, in __init__
     self.static_view = ZoomableGraphicsView(with_roi=True)
-  File "C:\Users\User\Documents\github\openfibsem\Coincidence\fibsem\modules_czii\CoincidenceGUI.py", line 183, in __init__
-    self.roi.rect_changed.connect(self.on_roi_moved)
-TypeError: could not convert 'ResizableRectItem' to 'QObject'
+  File "C:\Users\User\Documents\github\openfibsem\Coincidence\fibsem\modules_czii\CoincidenceGUI.py", line 185, in __init__
+    self.roi = ResizableRectItem(QRectF(100, 100, 120, 80))
+  File "C:\Users\User\Documents\github\openfibsem\Coincidence\fibsem\modules_czii\CoincidenceGUI.py", line 104, in __init__
+    super.__init__(self, parent)
+TypeError: descriptor '__init__' requires a 'super' object but received a 'ResizableRectItem'

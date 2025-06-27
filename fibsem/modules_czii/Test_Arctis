@@ -5,8 +5,8 @@ Traceback (most recent call last):
     self.manual_gui_window = ManualCoincidenceGUI(self.oa, self.coincidence)
   File "C:\Users\User\Documents\github\openfibsem\Coincidence\fibsem\modules_czii\CoincidenceGUI.py", line 265, in __init__
     self.static_view = ZoomableGraphicsView(with_roi=True)
-  File "C:\Users\User\Documents\github\openfibsem\Coincidence\fibsem\modules_czii\CoincidenceGUI.py", line 185, in __init__
-    self.roi = ResizableRectItem(QRectF(100, 100, 120, 80))
-  File "C:\Users\User\Documents\github\openfibsem\Coincidence\fibsem\modules_czii\CoincidenceGUI.py", line 105, in __init__
-    QObject.__init__(parent)
-TypeError: descriptor '__init__' requires a 'sip.simplewrapper' object but received a 'NoneType'
+  File "C:\Users\User\Documents\github\openfibsem\Coincidence\fibsem\modules_czii\CoincidenceGUI.py", line 186, in __init__
+    self.scene.addItem(self.roi.item())
+  File "C:\Users\User\Documents\github\openfibsem\Coincidence\fibsem\modules_czii\CoincidenceGUI.py", line 121, in item
+    return self.rect_item
+TypeError: could not convert 'ResizableRectItem' to 'QObject'

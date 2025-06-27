@@ -8,5 +8,8 @@ Traceback (most recent call last):
   File "C:\Users\User\Documents\github\openfibsem\Coincidence\fibsem\modules_czii\CoincidenceGUI.py", line 185, in __init__
     self.roi = ResizableRectItem(QRectF(100, 100, 120, 80))
   File "C:\Users\User\Documents\github\openfibsem\Coincidence\fibsem\modules_czii\CoincidenceGUI.py", line 104, in __init__
-    super.__init__(self, parent)
-TypeError: descriptor '__init__' requires a 'super' object but received a 'ResizableRectItem'
+    super().__init__(self, parent)
+TypeError: arguments did not match any overloaded call:
+  QGraphicsRectItem(parent: Optional[QGraphicsItem] = None): too many arguments
+  QGraphicsRectItem(rect: QRectF, parent: Optional[QGraphicsItem] = None): argument 1 has unexpected type 'ResizableRectItem'
+  QGraphicsRectItem(x: float, y: float, w: float, h: float, parent: Optional[QGraphicsItem] = None): argument 1 has unexpected type 'ResizableRectItem'

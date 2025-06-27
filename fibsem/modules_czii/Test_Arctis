@@ -1,33 +1,12 @@
-HANDLE_SIZE = 10
-class ResizableRectItem(QGraphicsRectItem, QObject):
-    rect_changed = pyqtSignal()
-    def __init__(self, rect:QRectF, parent:QObject=None):
-        super().__init__(parent)
-        self.rect_item = QGraphicsRectItem(rect)
-
-        self.setFlags(
-            QGraphicsRectItem.ItemIsMovable |
-            QGraphicsRectItem.ItemIsSelectable |
-            QGraphicsRectItem.ItemSendsGeometryChanges
-        )
-        self.setBrush(QColor(255, 0, 0, 50))
-        self.setPen(QPen(Qt.red, 2))
-        self.handles = {}
-        self.handle_size = HANDLE_SIZE
-        self.handle_selected = None
-        self.mouse_press_pos = None
-        self.mouse_press_rect = None
-
-    def item(self):
-        return self.rect_item
-
-    def boundingRect(self):
-        o = self.handle_size / 2
-        return self.rect().adjusted(-o, -o, o, o)
-
-    def paint(self, painter, option, widget=None):
-        super().paint(painter, option, widget)
-        self.updateHandlesPos()
-        painter.setBrush(QColor(0, 255, 0))
-        for handle, rect in self.handles.items():
-            painter.drawRect(rect)
+Traceback (most recent call last):
+  File "C:\Users\User\Documents\github\openfibsem\Coincidence\fibsem\modules_czii\Main.py", line 11, in <module>
+    CoincidenceGUI(oa=OverArch, mode='manual')
+  File "C:\Users\User\Documents\github\openfibsem\Coincidence\fibsem\modules_czii\CoincidenceGUI.py", line 54, in __init__
+    self.manual_gui_window = ManualCoincidenceGUI(self.oa, self.coincidence)
+  File "C:\Users\User\Documents\github\openfibsem\Coincidence\fibsem\modules_czii\CoincidenceGUI.py", line 265, in __init__
+    self.static_view = ZoomableGraphicsView(with_roi=True)
+  File "C:\Users\User\Documents\github\openfibsem\Coincidence\fibsem\modules_czii\CoincidenceGUI.py", line 185, in __init__
+    self.roi = ResizableRectItem(QRectF(100, 100, 120, 80))
+  File "C:\Users\User\Documents\github\openfibsem\Coincidence\fibsem\modules_czii\CoincidenceGUI.py", line 105, in __init__
+    QObject.__init__(parent)
+TypeError: descriptor '__init__' requires a 'sip.simplewrapper' object but received a 'NoneType'

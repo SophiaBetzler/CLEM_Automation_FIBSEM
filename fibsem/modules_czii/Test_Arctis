@@ -5,11 +5,8 @@ Traceback (most recent call last):
     self.manual_gui_window = ManualCoincidenceGUI(self.oa, self.coincidence)
   File "C:\Users\User\Documents\github\openfibsem\Coincidence\fibsem\modules_czii\CoincidenceGUI.py", line 265, in __init__
     self.static_view = ZoomableGraphicsView(with_roi=True)
-  File "C:\Users\User\Documents\github\openfibsem\Coincidence\fibsem\modules_czii\CoincidenceGUI.py", line 185, in __init__
-    self.roi = ResizableRectItem(QRectF(100, 100, 120, 80))
-  File "C:\Users\User\Documents\github\openfibsem\Coincidence\fibsem\modules_czii\CoincidenceGUI.py", line 104, in __init__
-    super().__init__(self, parent)
-TypeError: arguments did not match any overloaded call:
-  QGraphicsRectItem(parent: Optional[QGraphicsItem] = None): too many arguments
-  QGraphicsRectItem(rect: QRectF, parent: Optional[QGraphicsItem] = None): argument 1 has unexpected type 'ResizableRectItem'
-  QGraphicsRectItem(x: float, y: float, w: float, h: float, parent: Optional[QGraphicsItem] = None): argument 1 has unexpected type 'ResizableRectItem'
+  File "C:\Users\User\Documents\github\openfibsem\Coincidence\fibsem\modules_czii\CoincidenceGUI.py", line 187, in __init__
+    self.roi.rect_changed.connect(self.on_roi_moved)
+TypeError: could not convert 'ResizableRectItem' to 'QObject'
+
+Process finished with exit code -1073741819 (0xC0000005)

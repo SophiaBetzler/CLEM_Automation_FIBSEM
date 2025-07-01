@@ -23,7 +23,7 @@ sys.path.append("C:\\Program Files\\Thermo Scientific AutoScript")
 sys.path.append("C:\\Program Files\\Enthought\\Python\\envs\\AutoScript\\Lib\\site-packages")
 sys.path.append("C:\\Program Files\\Enthought\\Python\\envs\\AutoScript")
 sys.path.append("C:\\Program Files\\Enthought\\Python\envs\\AutoScript\\Lib\\site-packages\\autoscript_sdb_microscope_client")
-#from autoscript_sdb_microscope_client import SdbMicroscopeClient
+from autoscript_sdb_microscope_client import SdbMicroscopeClient
 
 def error_message(text):
     messagebox.showerror("Error", text)
@@ -435,8 +435,8 @@ class BasicFunctions:
 class OverArch(BasicFunctions):
     def __init__(self, default_settings=False):
         super().__init__(default_settings)
-        self.id_available_grids()
-
+        #self.id_available_grids()
+       # self.available_grids = None
     def set_variable(self, name, value):
         setattr(self, name, value)
 

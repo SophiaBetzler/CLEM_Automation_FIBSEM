@@ -48,8 +48,12 @@ class CoincidenceGUI:
         self.mode = mode
         self.coincidence = CoincidenceFunctions(oa=self.oa, mode=self.mode)
         self.app = QApplication(sys.argv)
-        self.auto_gui_window = AutoCoincidenceGUI(self.oa, self.coincidence)
-        self.manual_gui_window = ManualCoincidenceGUI(self.oa, self.coincidence)
+        if self.mode == 'auto':
+            self.auto_gui_window = AutoCoincidenceGUI(self.oa, self.coincidence)
+        elif self.mode == 'manual':
+            self.manual_gui_window = ManualCoincidenceGUI(self.oa, self.coincidence)
+        else:
+            self.error_messagebox("No valid mode selected. Options are 'manual' or 'auto'.")
         self.run()
 
     def run(self):
@@ -93,7 +97,7 @@ class CoincidenceGUI:
 
 
 ### Subclass: ROI selection tool #################################################################################################
-HANDLE_SIZE = 80
+HANDLE_SIZE = 5
 class ResizableRectItem(QGraphicsRectItem):
     def __init__(self, rect):
         super().__init__(rect)
@@ -103,7 +107,7 @@ class ResizableRectItem(QGraphicsRectItem):
             QGraphicsRectItem.ItemSendsGeometryChanges
         )
         self.setBrush(QColor(255, 0, 0, 50))
-        self.setPen(QPen(Qt.red, 40))
+        self.setPen(QPen(Qt.red, 2))
         self.handles = {}
         self.handle_size = HANDLE_SIZE
         self.handle_selected = None
@@ -170,15 +174,32 @@ class ZoomableGraphicsView(QGraphicsView):
         self.scene.addItem(self.image_item)
         self.roi = None
         if with_roi:
-            self.roi = ResizableRectItem(QRectF(1000, 1000, 300, 300))
+            self.roi = ResizableRectItem(QRectF(100, 100, 120, 80))
             self.scene.addItem(self.roi)
-        self.image = np.random.randint(0, 255, (4000, 4000), dtype=np.uint8)
-        self.vmin, self.vmax = 0, 1500
+        self.image = np.random.randint(0, 255, (512, 512), dtype=np.uint8)
+        self.vmin, self.vmax = 0, 255
         self.setFixedSize(520, 520)
         self.scale_factor = 1.15
 
-    def update_image(self, new_image):
+    def update_image(self, new_image, crop=False, display_scale=0.25):
         self.image = new_image
+
+        if crop:
+            roi_rect = self.get_roi_rect()
+
+            if roi_rect is None:
+                h, w = new_image.shape
+                cx, cy = w//2, h//2
+            else:
+                cx = int(roi_rect.x() + roi_rect.width()/2)
+                cy = int(roi_rect.y() + roi_rect.height()/2)
+            half_size=256
+            x_start = max(cx - half_size, 0)
+            y_start = max(cy - half_size, 0)
+            x_end = min(cx +  half_size, new_image.shape[1])
+            y_end = min(cy + half_size, new_image.shape[0])
+            new_image = new_image[y_start:y_end, x_start:x_end]
+
         img = np.clip((new_image - self.vmin) / (self.vmax - self.vmin) * 255, 0, 255).astype(np.uint8)
         img_rgb = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
         h, w, ch = img_rgb.shape
@@ -188,7 +209,7 @@ class ZoomableGraphicsView(QGraphicsView):
         self.image_item.update()
         self.scene.update()
         self.viewport().update()
-        self.fitInView(self.image_item, Qt.KeepAspectRatio)
+
 
     def get_roi_rect(self):
         if self.roi is None:
@@ -263,7 +284,7 @@ class ManualCoincidenceGUI(QWidget):
         hist_button_layout.addWidget(self.hist_max_input, 1, 1)
         hist_button_layout.addWidget(self.hist_update_button, 2, 0, 1, 2, alignment=Qt.AlignCenter)
         hist_button_widget = QWidget()
-        hist_button_widget.setLayout(hist_button_layout)                                                                
+        hist_button_widget.setLayout(hist_button_layout)
 
         # Plots
         plots_layout = QVBoxLayout()
@@ -333,7 +354,7 @@ class ManualCoincidenceGUI(QWidget):
         main_layout.addLayout(button_layout)
         self.setLayout(main_layout)
 
-        self.dynamic_img = np.zeros((4000, 4000), dtype=np.uint8)
+        self.dynamic_img = np.zeros((512, 512), dtype=np.uint8)
         self.static_img = self.coincidence.grab_fl_live_image()
         self.update_display_range()
 
@@ -345,7 +366,8 @@ class ManualCoincidenceGUI(QWidget):
     ####################################################
 
     def update_static_image(self):
-        image = self.static_view.update_image(self.coincidence.grab_fl_live_image())
+        image = self.coincidence.grab_fl_live_image()
+        self.static_view.update_image(image)
         self.static_img = image
         self.static_view.update_image(image)
         return image
@@ -356,9 +378,21 @@ class ManualCoincidenceGUI(QWidget):
         if not hasattr(self, "dynamic_img"):
             return
         self.dynamic_view.update_image(self.dynamic_img)
-        self.update_plot( )
+        self.update_plot()
+
+
 
     def update_plot(self):
+
+        if not hasattr(self, "_line_plot"):
+            self._line_plot, = self.ax_line.plot([], [], label="Mean ROI Intensity", color='blue')
+            self.ax_line.set_xlabel("Time (s)", fontsize=6)
+            self.ax_line.set_ylabel("Mean Intensity", fontsize=6)
+            self.ax_line.tick_params(axis='both', labelsize=6)
+        if not hasattr(self, "_histogram"):
+            self._histogram = self.ax_hist.hist([], bins=50, color='gray')[2]
+            self.ax_hist.set_xlim(self.vmin, self.vmax)
+
         roi = self.static_view.get_roi_rect()
         if roi:
             x, y, w, h = int(roi.x()), int(roi.y()), int(roi.width()), int(roi.height())
@@ -367,17 +401,18 @@ class ManualCoincidenceGUI(QWidget):
                 mean_intensity = roi_data.mean()
                 self.x_data.append(self.timestamp)
                 self.y_data.append(mean_intensity)
-        self.ax_line.clear()
-        self.ax_line.plot(self.x_data, self.y_data, label="Mean ROI Intensity")
         self.ax_line.set_xlim(0, self.timestamp)
-        self.ax_line.set_xlabel("Time (s)", fontsize=6)
-        self.ax_line.set_ylabel("Mean Intensity", fontsize=6)
-        self.ax_line.tick_params(axis='both', labelsize=6)
+        self._line_plot.set_data(self.x_data, self.y_data)
+        self.ax_line.relim()
+        self.ax_line.autoscale_view()
 
-        self.ax_hist.clear()
-        self.ax_hist.hist(self.dynamic_view.image.flatten(), bins=50, color='gray')
+        for patch in self._histogram:
+            patch.remove()
+        self._histogram = self.ax_hist.hist(self.dynamic_view.image.flatten(), bins=50, color='gray')[2]
         self.ax_hist.set_xlim(self.vmin, self.vmax)
+
         self.plot_canvas.draw()
+
 
     def update_display_range(self):
         try:
@@ -419,7 +454,7 @@ class ManualCoincidenceGUI(QWidget):
         if start_timestamp == 0.0:
             self.experiment_start = time.time()
         if self.go is True:
-            self.timer.start()
+            self.timer.start(100)
 
     def pause_coincidence_experiment(self):
         if self.coincidence.coin_stop_event.is_set() is True:
@@ -470,7 +505,7 @@ class ManualCoincidenceGUI(QWidget):
         before_img = cv2.imread(os.path.join(self.oa.temp_folder_path, f"fl_image.tif"))
         cv2.rectangle(before_img, (roi_coordinates[0], roi_coordinates[1]),
                       (roi_coordinates[0] + roi_coordinates[2], roi_coordinates[1] + roi_coordinates[3]),
-                      color=(0, 0, 255), thickness=20)
+                      color=(0, 0, 255), thickness=5)
         cv2.imwrite(os.path.join(self.path, "ROI_after_exp.tif"), before_img)
         formatted_times = [
             f"{int((x - x_data[0]) // 60):02}:{int((x - x_data[0]) % 60):02}.{int(((x - x_data[0]) % 1) * 1000):03}"
@@ -479,11 +514,11 @@ class ManualCoincidenceGUI(QWidget):
         np.savetxt(os.path.join(self.path, "roi_intensities.csv"), intensity_data, delimiter=",", fmt="%s",
                    header="timestamp, average_intensity", comments='')
         np.save(os.path.join(self.path, "roi_intensities.npy"), intensity_data)
-        print("[INFO] Coincidence experiment terminated successfully.")
-        print(self.done)
+
         if self.done is True:
             self.show_experiment_finished_message()
 
+        print("[INFO] Coincidence experiment terminated successfully.")
 
     ####################################################
     ### Functions enabling communication             ###

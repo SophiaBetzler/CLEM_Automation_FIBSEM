@@ -3,26 +3,66 @@ import re
 import numpy as np
 from PIL import Image
 from matplotlib.widgets import RectangleSelector
+import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 import tifffile
 
+import os
+import re
+import numpy as np
+import tifffile
+from PIL import Image
+from collections import Counter
+
 def import_images_from_folder(folder_path):
-    pattern = re.compile(r'image_(\d+)\.tif$')
-    image_files = sorted(
-        [f for f in os.listdir(folder_path) if pattern.match(f)],
-        key=lambda x: float(pattern.match(x).group(1))
-    )
+    patterns = [('single', re.compile(r'image_(\d+)\.(tif|tiff|png)$', re.IGNORECASE)),
+        ('double', re.compile(r'image_(\d+)\.(\d+)\.(tif|tiff|png)$', re.IGNORECASE))]
+    files = os.listdir(folder_path)
+
+    match_counts = {}
+    matches_per_pattern = {}
+
+    for label, pat in patterns:
+        matches = [(f, pat.match(f)) for f in files if pat.match(f)]
+        match_counts[label] = len(matches)
+        matches_per_pattern[label] = matches
+
+    best_label = max(match_counts, key=match_counts.get)
+    best_matches = matches_per_pattern[best_label]
+
+    if not best_matches:
+        raise ValueError("No matching image files found with known patterns.")
+
+    def extract_sort_key(match):
+        if best_label == 'single':
+            return float(match[1].group(1))
+        elif best_label == 'double':
+            # Use both groups for double precision sorting
+            major = int(match[1].group(1))
+            minor = int(match[1].group(2))
+            return major + minor / 1000.0
+        return 0
+
+    sorted_files = sorted(best_matches, key=extract_sort_key)
 
     image_stack = []
-    for fname in image_files:
+    for fname, _ in sorted_files:
         img_path = os.path.join(folder_path, fname)
-        img = tifffile.imread(img_path)  # preserves 16-bit
+        ext = os.path.splitext(fname)[1].lower()
+
+        if ext in ['.tif', '.tiff']:
+            img = tifffile.imread(img_path)
+        elif ext == '.png':
+            img = np.array(Image.open(img_path))
+            if img.dtype != np.uint16:
+                img = img.astype(np.uint16)
+        else:
+            continue
         image_stack.append(img)
 
     stack = np.stack(image_stack, axis=0)
     return stack
-
 
 class FitFunctionsForStack:
     def __init__(self, image_stack):
@@ -149,8 +189,6 @@ class FitFunctionsForStack:
 
             else:
                 raise ValueError(f"Unknown bg_type: {bg_type}")
-            print(gaussian_params)
-            print(bg_params)
             return gaussian_params + bg_params, (lower_bounds_gauss + lower_bounds_bg, upper_bounds_gauss + upper_bounds_bg)
 
         available_fit_functions = {"symmetric_2d_gaussian_poly_bg": symmetric_gaussian_2d_with_poly_bg,
@@ -174,7 +212,7 @@ class FitFunctionsForStack:
         roi_images = []
         i = 0
         for image in self.stack:
-            if np.max(image) > 150:
+            if np.max(image) > 50:
                 H, W = image.shape
                 x = np.arange(W)
                 y = np.arange(H)
@@ -184,7 +222,6 @@ class FitFunctionsForStack:
                 values = image.ravel()
 
                 p0, bounds = guess_p0_general(image, model_type=model_type, bg_type=bg_type, degree=degree)
-                print(bounds)
                 try:
                     if bounds:
                         popt, pcov = curve_fit(available_fit_functions[model_func], coords, values, p0=p0, bounds=bounds)
@@ -195,7 +232,6 @@ class FitFunctionsForStack:
                     pcov = []
 
                 if popt is not None and len(popt) > 0:
-                    print(i)
                     A, x0, y0 = popt[0], popt[1], popt[2]
                     fitted = available_fit_functions[model_func](coords, *popt).reshape(image.shape)
                     residue = image - fitted
@@ -247,9 +283,6 @@ def select_roi_and_extract_signal(stack):
 import matplotlib.pyplot as plt
 import numpy as np
 
-import matplotlib.pyplot as plt
-import numpy as np
-
 class ScrollableFitViewer:
     def __init__(self, original_stack, experiment, fitted_stack=None, residue_stack=None,
                  centers=None, title="2D Gaussian Fit Viewer",
@@ -265,22 +298,45 @@ class ScrollableFitViewer:
         self.index = 0
         self.Z = len(original_stack)
         self.cmap = cmap
+        vmin = np.min(self.original_stack[0])
+        vmax = np.max(self.original_stack[0])
+        self.vmin = vmin
+        self.vmax = vmax
+        if self.experiment == 'gaussian_fit':
+            title = title
+        else:
+            title = 'Intensity Plot'
 
         if self.experiment == 'gaussian_fit':
-            # Create figure with 4 subplots
-            self.fig, axs = plt.subplots(1, 5, figsize=(30, 5))
-            self.fig.suptitle(title)
-            self.ax1, self.ax2, self.ax3, self.ax4, self.ax5 = axs
+            # # Create figure with 4 subplots
+            # self.fig, axs = plt.subplots(1, 5, figsize=(35, 5), constrained_layout=True)
+            # # self.fig, axs = plt.subplots(2, 3, figsize=(18, 10))
+            # # self.ax1, self.ax2, self.ax3 = axs[0]
+            # # self.ax4, self.ax5, _ = axs[1]
+            # self.fig.suptitle(title)
+            # self.ax1, self.ax2, self.ax3, self.ax4, self.ax5 = axs
 
-            self.im1 = self.ax1.imshow(self.original_stack[self.index], cmap=cmap, origin='upper')
+            self.fig = plt.figure(figsize=(18, 10), constrained_layout=True)
+            gs = gridspec.GridSpec(2, 3, figure=self.fig)
+
+            self.ax1 = self.fig.add_subplot(gs[0, 0])
+            self.ax2 = self.fig.add_subplot(gs[0, 1])
+            self.ax3 = self.fig.add_subplot(gs[0, 2])
+            self.ax4 = self.fig.add_subplot(gs[1, 0:2])
+            self.ax5 = self.fig.add_subplot(gs[1, 2])
+
+            self.im1 = self.ax1.imshow(self.original_stack[self.index], cmap=cmap, origin='upper',
+                                       vmin=self.vmin, vmax=self.vmax)
             self.ax1.set_title("Original")
             self.ax1.axis('off')
 
-            self.im2 = self.ax2.imshow(self.fitted_stack[self.index], cmap=cmap, origin='upper')
+            self.im2 = self.ax2.imshow(self.fitted_stack[self.index], cmap=cmap, origin='upper',
+                                       vmin=self.vmin, vmax=self.vmax)
             self.ax2.set_title("Fitted")
             self.ax2.axis('off')
 
-            self.im3 = self.ax3.imshow(self.residue_stack[self.index], cmap=cmap, origin='upper')
+            self.im3 = self.ax3.imshow(self.residue_stack[self.index], cmap=cmap, origin='upper',
+                                       vmin=self.vmin, vmax=self.vmax/10)
             self.ax3.set_title("Residue")
             self.ax3.axis('off')
 
@@ -288,31 +344,32 @@ class ScrollableFitViewer:
             self.cross2 = self.ax2.plot([], [], 'r+', markersize=8)[0]
 
             if self.x_vals is not None and self.y_vals is not None:
-                self.line, = self.ax4.plot(self.x_vals, self.y_vals, 'b.-', picker=5)
+                self.line, = self.ax4.plot(self.x_vals, self.y_vals, 'b-', picker=5)
                 self.selected_point, = self.ax4.plot([], [], 'ro', markersize=10)  # highlight selected
-                self.ax4.set_title("Click to select slice")
                 self.ax4.set_xlabel("X")
                 self.ax4.set_ylabel("Y")
                 self.ax4.set_ylim(bottom=0)
 
             if centers is not None:
-                center_x, center_y = zip(*centers)
-                time = np.arange(len(centers))
-                scatter = self.ax5.scatter(center_x, center_y, c=time, cmap='viridis', s=60, edgecolor='k')
-                self.ax5.set_xlabel("X Position")
-                self.ax5.set_ylabel("Y Position")
-                self.ax5.set_aspect('equal')  # optional: keeps x/y scale proportional
+                if centers is not None:
+                    center_x, center_y = zip(*centers)
+                    time = np.arange(len(centers))
+                    scatter = self.ax5.scatter(center_x, center_y, c=time, cmap='viridis', s=60, edgecolor='k')
+                    self.ax5.set_xlabel("X Position")
+                    self.ax5.set_ylabel("Y Position")
+                    cbar = self.fig.colorbar(scatter, ax=self.ax5)
+                    cbar.set_label("Time")
+                    self.selected_scatter_point, = self.ax5.plot([], [], 'ro', markersize=10)
 
-                cbar = self.fig.colorbar(scatter, ax=self.ax5)
-                cbar.set_label("Time")
-
+                else:
+                    self.selected_scatter_point, = self.ax5.plot([], [], 'ro', markersize=10)
 
             self.update_crosshair()
             self.update_display()
 
             self.fig.canvas.mpl_connect("scroll_event", self.on_scroll)
             self.fig.canvas.mpl_connect("pick_event", self.on_pick)
-            plt.tight_layout()
+            #plt.tight_layout()
             plt.show()
 
         elif self.experiment == 'cilia':
@@ -325,13 +382,13 @@ class ScrollableFitViewer:
             self.ax1.axis('off')
 
             if self.x_vals is not None and self.y_vals is not None:
-                self.line, = self.ax4.plot(self.x_vals, self.y_vals, 'b.-', picker=5)
+                self.line, = self.ax4.plot(self.x_vals, self.y_vals, 'b-', picker=5)
                 self.selected_point, = self.ax4.plot([], [], 'ro', markersize=10)  # highlight selected
                 self.ax4.set_title("Click to select slice")
                 self.ax4.set_xlabel("X")
                 self.ax4.set_ylabel("Y")
-                self.ax4.set_ylim(bottom=0)
-                self.ax4.set_ylim(top=np.max(image_stack))
+                self.ax4.set_ylim(bottom=np.min(roi_means))
+                self.ax4.set_ylim(top=np.max(roi_means))
 
             self.update_display()
 
@@ -359,12 +416,22 @@ class ScrollableFitViewer:
             self.im2.set_data(self.fitted_stack[self.index])
             self.im3.set_data(self.residue_stack[self.index])
 
+            self.im1.set_clim(vmin=self.vmin, vmax=self.vmax)
+            self.im2.set_clim(vmin=self.vmin, vmax=self.vmax)
+            self.im3.set_clim(vmin=self.vmin, vmax=self.vmax)
+
             self.ax1.set_title(f"Original (Slice {self.index})")
             self.ax2.set_title(f"Fitted (Slice {self.index})")
             self.ax3.set_title(f"Residue (Slice {self.index})")
 
             if self.x_vals is not None and self.y_vals is not None:
                 self.selected_point.set_data([self.x_vals[self.index]], [self.y_vals[self.index]])
+
+            if self.centers[self.index]:
+                cx, cy = self.centers[self.index]
+                self.selected_scatter_point.set_data([cx], [cy])
+            else:
+                self.selected_scatter_point.set_data([], [])
 
             self.update_crosshair()
             self.fig.canvas.draw_idle()
@@ -393,17 +460,30 @@ class ScrollableFitViewer:
 
 
 
-path = '/Users/sophia.betzler/Desktop/images'
+path = '/Volumes/Extreme SSD/Data/Arctis/20250618/14-18/Images'
 #### SETUP FOR THE BEADS EXPERIMENT ###########
-# image_stack = import_images_from_folder(path)
-# roi_means, roi_slice = select_roi_and_extract_signal(image_stack[1:2000])
-# plt.plot(roi_means)
-# fit = FitFunctionsForStack(roi_slice)
-# amplitudes, centers, roi_images, fitted_stack, residue_stack = fit.fit_gaussian_model("symmetric_2d_gaussian", degree=3)
-#
-# viewer = ScrollableFitViewer(roi_images, 'gaussian_fit', fitted_stack, residue_stack, centers=centers, x_vals=np.arange(len(roi_images)), y_vals=amplitudes)
+image_stack = import_images_from_folder(path)
+
+# import tifffile as tiff
+#image_stack = tiff.imread('/Users/sophia.betzler/milling_video-1.tif')
+
+roi_means, roi_slice = select_roi_and_extract_signal(image_stack[1:])
+
+fit = FitFunctionsForStack(roi_slice)
+amplitudes, centers, roi_images, fitted_stack, residue_stack = fit.fit_gaussian_model("symmetric_2d_gaussian",
+                                                                                      degree=3)
+
+viewer = ScrollableFitViewer(roi_images, 'gaussian_fit', fitted_stack, residue_stack,
+                             centers=centers, x_vals=np.arange(len(roi_images)), y_vals=amplitudes)
+
+plt.plot(amplitudes[-500:])
+plt.show()
+
 
 #### SETUP FOR THE CILIA EXPERIMENT ###########
-image_stack = import_images_from_folder(path)
-roi_means, roi_slice = select_roi_and_extract_signal(image_stack[1:1400])
-viewer = ScrollableFitViewer(roi_slice, experiment='cilia', x_vals=np.arange(len(roi_slice)), y_vals=roi_means)
+# image_stack = import_images_from_folder(path)
+# roi_means, _ = select_roi_and_extract_signal(image_stack)
+#
+# _, roi_slice = select_roi_and_extract_signal(image_stack)
+#
+# viewer = ScrollableFitViewer(roi_slice, experiment='cilia', x_vals=np.arange(len(roi_slice)), y_vals=roi_means)

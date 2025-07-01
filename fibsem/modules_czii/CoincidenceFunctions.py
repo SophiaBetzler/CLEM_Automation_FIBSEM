@@ -36,10 +36,10 @@ import matplotlib.image as mpimg
 sys.path.append('C:\Program Files\Thermo Scientific Autoscript')
 sys.path.append('C:\Program Files\Enthought\Python\envs\AutoScript\Lib\site-packages')
 
-#from autoscript_sdb_microscope_client import SdbMicroscopeClient
-#from autoscript_sdb_microscope_client.enumerations import *
-#from autoscript_sdb_microscope_client.structures import GetImageSettings
-#from autoscript_sdb_microscope_client import SdbMicroscopeClient
+from autoscript_sdb_microscope_client import SdbMicroscopeClient
+from autoscript_sdb_microscope_client.enumerations import *
+from autoscript_sdb_microscope_client.structures import GetImageSettings
+from autoscript_sdb_microscope_client import SdbMicroscopeClient
 
 
 
@@ -107,7 +107,7 @@ class CoincidenceFunctions:
             tifffile.imwrite(os.path.join(self.manual_folder_path, f"reflection_image.tif"), image)
             print('[INFO] Collecting reflection FL image.')
 
-    def grab_fluorescence_image(self, add_on, row=None):
+    def grab_fluorescence_image(self, add_on=None, row=None, save=True):
         if self.mode == 'auto' and self.oa.manufacturer != 'Demo':
             self.oa.thermo_microscope.imaging.set_active_view(3)
             self.oa.thermo_microscope.imaging.set_active_device(8)
@@ -134,12 +134,14 @@ class CoincidenceFunctions:
             else:
                 self.manual_binning = self.oa.thermo_microscope.detector.camera_settings.binning.value
                 self.manual_brightness = self.oa.thermo_microscope.detector.brightness.value
+                print(self.manual_brightness)
                 self.manual_exposure_time = self.oa.thermo_microscope.detector.camera_settings.exposure_time.value
                 self.manual_filter_settings = self.oa.thermo_microscope.detector.camera_settings.filter.type.value
                 self.manual_emission_color = self.oa.thermo_microscope.detector.camera_settings.emission.type
                 self.manual_objective_focus =  self.oa.thermo_microscope.detector.camera_settings.focus.value
             image = self.oa.thermo_microscope.imaging.grab_frame()
-            image.save(os.path.join(self.manual_folder_path, f"Fl_image_{add_on}.tif"))
+            if save is True:
+                image.save(os.path.join(self.manual_folder_path, f"Fl_image_{add_on}.tif"))
             img = image.data
         else:
             sim = self.fl_data_simulation()
@@ -191,6 +193,7 @@ class CoincidenceFunctions:
                         now = datetime.now()
                         timestamp = (now - start_time).total_seconds() + start_timestamp
                         new_image = self.oa.thermo_microscope.imaging.get_image()
+                        self.image_queue.put((new_image.data.copy(), i))
                         if np.array_equal(new_image.data[:5], image.data[:5]) is False:
                             self.image_queue.put((new_image.data.copy(), i))
                             if update_callback:
@@ -377,7 +380,9 @@ class CoincidenceFunctions:
     def start_coincidence_milling(self, beam_current, stop_event, resume=False):
         if self.oa.manufacturer != 'Demo':
             self.oa.thermo_microscope.imaging.set_active_view(2)
-            self.oa.thermo_microscope.beams.ion_beam.beam_current.value = beam_current
+            if self.oa.thermo_microscope.beams.ion_beam.beam_current.value != beam_current:
+                self.oa.thermo_microscope.beams.ion_beam.beam_current.value = beam_current
+                time.sleep(10)
             if resume is False:
                 self.oa.thermo_microscope.patterning.start()
                 if self.data_callback:
@@ -385,14 +390,14 @@ class CoincidenceFunctions:
             else:
                 self.oa.thermo_microscope.patterning.resume()
             while not stop_event.is_set():
-                time.sleep(0.1)
+                time.sleep(0.01)
 
     def stop_coincidence_milling(self, pause=False):
         if self.oa.manufacturer != 'Demo':
             self.oa.thermo_microscope.imaging.set_active_view(2)
             if self.pause_not_stop is False:
                 self.oa.thermo_microscope.patterning.stop()
-                self.oa.thermo_microscope.patterning.clear_patterns()
+                #self.oa.thermo_microscope.patterning.clear_patterns()
             else:
                 self.oa.thermo_microscope.patterning.pause()
         else:
@@ -421,7 +426,7 @@ class CoincidenceFunctions:
                         self.oa.thermo_microscope.imaging.set_active_view(2)
                         self.imaging.acquire_image(hfw=self.hfw, folder_path=self.manual_folder_path,
                                                    beam_type='ion', working_distance=self.working_distance,
-                                                   autofocus=True, filename=f"FIB-before-image")
+                                                   autofocus=False, filename=f"FIB-before-image")
                         "HERE I NEED TO CREATE THE PATTERN!"
                         self.milling_thread = threading.Thread(target=self.start_coincidence_milling,
                                                                    args=(beam_current, stop_event))
@@ -461,9 +466,23 @@ class CoincidenceFunctions:
                 self.manual_folder_path.mkdir(parents=True, exist_ok=True)
                 if self.data_callback:
                     self.data_callback('path', self.manual_folder_path)
+            self.oa.thermo_microscope.imaging.set_active_view(3)
+            self.oa.thermo_microscope.imaging.set_active_device(8)
+            if self.oa.thermo_microscope.detector.camera_settings.filter.type.value == CameraFilterType.REFLECTION:
+                pass
+            else:
+                self.manual_binning = self.oa.thermo_microscope.detector.camera_settings.binning.value
+                self.manual_brightness = self.oa.thermo_microscope.detector.brightness.value
+                self.manual_exposure_time = self.oa.thermo_microscope.detector.camera_settings.exposure_time.value
+                self.manual_filter_settings = self.oa.thermo_microscope.detector.camera_settings.filter.type.value
+                self.manual_emission_color = self.oa.thermo_microscope.detector.camera_settings.emission.type
+                self.manual_objective_focus = self.oa.thermo_microscope.detector.camera_settings.focus.value
+
             if self.selected_options['FIB Milling'] is True:
-                beam_current = self.oa.fib_microscope.get("current", beam_type=BeamType.ION)
-                self.working_distance = self.oa.fib_microscope.get("working_distance", beam_type=BeamType.ION)
+                beam_current = self.oa.thermo_microscope.beams.ion_beam.beam_current.value
+                self.working_distance = self.oa.thermo_microscope.beams.ion_beam.working_distance.value
+                #beam_current = self.oa.fib_microscope.get_beam_current(beam_type=BeamType.ION)
+#               #self.working_distance = self.oa.fib_microscope.get("working_distance", beam_type=BeamType.ION)
 
                 if self.oa.manufacturer != 'Demo':
                     self.oa.thermo_microscope.imaging.set_active_view(2)
@@ -476,13 +495,14 @@ class CoincidenceFunctions:
                     if self.selected_options['Before/After FIB Image'] is True:
                         self.imaging.acquire_image(hfw=self.hfw, folder_path=self.manual_folder_path,
                                                 beam_type='ion', working_distance=self.working_distance,
-                                                   autofocus=True, filename=f"FIB-before-image")
+                                                   autofocus=False, filename=f"FIB-before-image")
 
                     self.milling_thread = threading.Thread(target=self.start_coincidence_milling, args=(beam_current, stop_event))
                 else:
                     resume = True
                     self.milling_thread = threading.Thread(target=self.start_coincidence_milling,
                                                            args=(beam_current, stop_event, resume))
+                self.oa.thermo_microscope.beams.ion_beam.beam_current.value = beam_current
                 self.milling_thread.start()
                 time.sleep(0.5)
                 print("[INFO] Starting the milling ...")
@@ -506,7 +526,7 @@ class CoincidenceFunctions:
         if self.selected_options['Before/After FIB Image'] is True:
             self.imaging.acquire_image(hfw=self.hfw, working_distance=self.working_distance,
                                        folder_path=self.manual_folder_path, beam_type='ion',
-                                       autofocus=True, filename=f"FIB-after-image")
+                                       autofocus=False, filename=f"FIB-after-image")
         if self.data_callback:
             self.data_callback('done', True)
 
@@ -521,19 +541,18 @@ class CoincidenceFunctions:
             mid_focus = self.oa.thermo_microscope.detector.camera_settings.focus.value
             z_stack = []
             for i in range(-5, 5):
-                z_stack.append(mid_focus + (i * 500e-9))
-            # for i in range(-5, 5):
-            #     self.oa.thermo_microscope.detector.camera_settings.focus.value = mid_focus + (i * 500e-6)
-            #     image = self.grab_fl_live_image(save=False)
-            #     if isinstance(image, np.ndarray):
-            #         z_stack.append(image)
-            #     else:
-            #         z_stack.append(image.data)
-            #     if self.mode == 'manual':
-            #         tifffile.imwrite(os.path.join(self.manual_folder_path, "Z_stack_after.tif"), z_stack)
-            #     else:
-            #         tifffile.imwrite(os.path.join(self.oa.folder_path, f"{row}-Dataset", "Z_stack_after.tif"), z_stack)
-            #self.oa.thermo_microscope.detector.camera_settings.focus.value = mid_focus
+                print("[INFO] Acquiring Z-Stack. ")
+                self.oa.thermo_microscope.detector.camera_settings.focus.value = mid_focus + (i * 250.0e-9)
+                image = self.grab_fluorescence_image(save=False)
+                if isinstance(image, np.ndarray):
+                    z_stack.append(image)
+                else:
+                    z_stack.append(image.data)
+                if self.mode == 'manual':
+                    tifffile.imwrite(os.path.join(self.manual_folder_path, "Z_stack_after.tif"), z_stack)
+                else:
+                    tifffile.imwrite(os.path.join(self.oa.folder_path, f"{row}-Dataset", "Z_stack_after.tif"), z_stack)
+            self.oa.thermo_microscope.detector.camera_settings.focus.value = mid_focus
         else:
             z_stack = []
             for i in range(-5, 5):

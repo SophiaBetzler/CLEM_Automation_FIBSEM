@@ -1,8 +1,1 @@
-Traceback (most recent call last):
-  File "C:\Users\User\Documents\github\openfibsem\Coincidence\fibsem\modules_czii\Main.py", line 19, in <module>
-    CoincidenceGUI(oa=oa, mode='manual', color='Red')
-  File "C:\Users\User\Documents\github\openfibsem\Coincidence\fibsem\modules_czii\CoincidenceGUI.py", line 47, in __init__
-    self.manual_gui_window = ManualCoincidenceGUI(self.oa, self.coincidence)
-  File "C:\Users\User\Documents\github\openfibsem\Coincidence\fibsem\modules_czii\CoincidenceGUI.py", line 219, in __init__
-    self.coincidence.set_data_callback(self.receive_data())
-TypeError: receive_data() missing 1 required positional argument: 'value'
+Deleted.

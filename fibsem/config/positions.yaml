@@ -1,40 +1,40 @@
 -   coordinate_system: RAW
-    name: grid02-pre-tilt-35-deg-electron
+    name: grid01-milling
     r: 0.8551927515811997
     t: 0.6108583337307305
     x: 0.0028004166666666668
     y: 0.004053833333333333
     z: 0.03175649434156379
 -   coordinate_system: RAW
-    name: grid02-pre-tilt-35-deg-ion
+    name: grid02-milling
     r: -2.286298510029761
     t: 0.29669765745887133
     x: -0.00368525
     y: -0.0023315
     z: 0.03184661136831276
 -   coordinate_system: RAW
-    name: grid01-pre-tilt-35-deg-ion
+    name: grid01-GIS
     r: -2.286298510029761
     t: 0.29669765745887133
     x: 0.0024960833333333332
     y: -0.002562333333333333
     z: 0.03186551568930041
 -   coordinate_system: RAW
-    name: grid01-pre-tilt-35-deg-electron
+    name: grid02-GIS
     r: 0.8551927515811997
     t: 0.6108470164082682
     x: -0.003231
     y: 0.00415
     z: 0.03186721965020576
 -   coordinate_system: Raw
-    name: autoliftout-pre-tilt-35-deg-grid-01-lamella
+    name: grid01-mapping
     r: -2.28636643635382
     t: 0.2967058527613453
     x: 0.0023149166666666665
     y: -0.0019699166666666667
     z: 0.031954218106995884
 -   coordinate_system: Raw
-    name: autoliftout-pre-tilt-35-deg-grid-02-landing
+    name: grid02-mapping
     r: -2.286298510029761
     t: 0.5585004974916625
     x: -0.003933166666666666

@@ -22,7 +22,8 @@ def main():
 
     PROTOCOL_PATH = os.path.join(os.path.dirname(__file__), "protocol_autolamella.yaml")
     microscope, settings = utils.setup_session(protocol_path=PROTOCOL_PATH)
-    
+
+
     # move to the milling angle
     stage_position = FibsemStagePosition(
         r=np.deg2rad(settings.protocol["stage_rotation"]),
@@ -87,7 +88,6 @@ def main():
 
             # realign
             alignment.beam_shift_alignment(microscope, settings.image, lamella.reference_image)
-                       
             if stage_no == 0:
                 microexpansion_stage = get_milling_stages("microexpansion", settings.protocol)
                 milling.mill_stage(microscope, microexpansion_stage[0])

@@ -1,0 +1,22 @@
+#DO NOT CHANGE THIS FILE EXCEPT FOR WHEN YOU ARE 100% CERTAIN THAT YOU KNOW WHAT YOU ARE DOING!
+-   coordinate_system: RAW
+    name: SEM_topview
+    r: -2.286298510029761
+    t: 0.29669765745887133
+    x: -0.00368525
+    y: -0.0023315
+    z: 0.03184661136831276
+-   coordinate_system: RAW
+    name: GIS_position
+    r: -2.286298510029761
+    t: 0.29669765745887133
+    x: -0.00368525
+    y: -0.0023315
+    z: 0.03184661136831276
+-   coordinate_system: RAW
+    name: FIB_topview
+    r: -90.0
+    t: +35.0
+    x: -10.720
+    y: +2.6720
+    z: +2.2116
